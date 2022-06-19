@@ -54,7 +54,23 @@ extern "C" {
 }
 
 pub fn print_supported() {
-    let probe = unsafe { io_uring_get_probe() };
+    struct DropGuard {
+        probe: *mut io_uring_probe,
+    }
+
+    impl Drop for DropGuard {
+        fn drop(&mut self) {
+            if !self.probe.is_null() {
+                unsafe { io_uring_free_probe(self.probe) };
+            }
+        }
+    }
+
+    let guard = DropGuard {
+        probe: unsafe { io_uring_get_probe() },
+    };
+
+    let probe = guard.probe;
     if probe.is_null() {
         panic!("Unable to acquire io_uring probe");
     }
