@@ -1,10 +1,11 @@
 extern crate cc;
 
 fn main() {
-  let include_dir = std::env::var("RIO_LIBURING_INCLUDE_DIR")
-        .expect("RIO_LIBURING_INCLUDE_DIR was not defined by the environment. It must be set to the include dir of the liburing installation.");
+  let msg = "RIO_LIBURING_INCLUDE_DIR was not defined by the environment. It must be set to the include dir of the liburing installation.";
+  let include_dir = std::env::var("RIO_LIBURING_INCLUDE_DIR").expect(msg);
 
-  let library_dir = std::env::var("RIO_LIBURING_LIBRARY_DIR").expect("RIO_LIBURING_LIBRARY_DIR was not defined by the environment. It must be set to the library dir of the liburing installation.");
+  let msg = "RIO_LIBURING_LIBRARY_DIR was not defined by the environment. It must be set to the library dir of the liburing installation.";
+  let library_dir = std::env::var("RIO_LIBURING_LIBRARY_DIR").expect(msg);
 
   println!("cargo:rustc-link-search={library_dir}");
   println!("cargo:rustc-link-lib=static=uring");

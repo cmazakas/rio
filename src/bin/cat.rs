@@ -10,349 +10,347 @@ const BLOCK_SZ: u32 = 1024;
 
 #[repr(C)]
 union offset {
-    off: u64,
-    addr2: u64,
+  off: u64,
+  addr2: u64,
 }
 
 #[repr(C)]
 union bufferp {
-    addr: u64,
-    splice_off_in: u64,
+  addr: u64,
+  splice_off_in: u64,
 }
 
 #[repr(C)]
 union flags {
-    rw_flags: i32,
-    fsync_flags: u32,
-    poll_events: u16,
-    poll32_events: u32,
-    sync_range_flags: u32,
-    msg_flags: u32,
-    timeout_flags: u32,
-    accept_flags: u32,
-    cancel_flags: u32,
-    open_flags: u32,
-    statx_flags: u32,
-    fadvise_advice: u32,
-    splice_flags: u32,
-    rename_flags: u32,
-    unlink_flags: u32,
-    hardlink_flags: u32,
+  rw_flags: i32,
+  fsync_flags: u32,
+  poll_events: u16,
+  poll32_events: u32,
+  sync_range_flags: u32,
+  msg_flags: u32,
+  timeout_flags: u32,
+  accept_flags: u32,
+  cancel_flags: u32,
+  open_flags: u32,
+  statx_flags: u32,
+  fadvise_advice: u32,
+  splice_flags: u32,
+  rename_flags: u32,
+  unlink_flags: u32,
+  hardlink_flags: u32,
 }
 
 #[repr(C, packed)]
 union index {
-    buf_index: u16,
-    buf_group: u16,
+  buf_index: u16,
+  buf_group: u16,
 }
 
 #[repr(C)]
 union splice_fd {
-    splice_fd_in: i32,
-    file_index: u32,
+  splice_fd_in: i32,
+  file_index: u32,
 }
 
 #[repr(C)]
 pub struct io_uring_sqe {
-    opcode: u8,  /* type of operation for this sqe */
-    flags: u8,   /* IOSQE_ flags */
-    ioprio: u16, /* ioprio for the request */
-    fd: i32,     /* file descriptor to do IO on */
-    off: offset,
-    addr: bufferp,
-    len: u32, /* buffer size or number of iovecs */
-    rw_flags: flags,
-    user_data: u64, /* data to be passed back at completion time */
-    /* pack this to avoid bogus arm OABI complaints */
-    idx: index,
-    /* personality to use, if used */
-    personality: u16,
-    splice_fd: splice_fd,
-    __pad2: [u64; 2],
+  opcode: u8,  /* type of operation for this sqe */
+  flags: u8,   /* IOSQE_ flags */
+  ioprio: u16, /* ioprio for the request */
+  fd: i32,     /* file descriptor to do IO on */
+  off: offset,
+  addr: bufferp,
+  len: u32, /* buffer size or number of iovecs */
+  rw_flags: flags,
+  user_data: u64, /* data to be passed back at completion time */
+  /* pack this to avoid bogus arm OABI complaints */
+  idx: index,
+  /* personality to use, if used */
+  personality: u16,
+  splice_fd: splice_fd,
+  __pad2: [u64; 2],
 }
 
 #[repr(C)]
 pub struct io_uring_cqe {
-    user_data: u64,
-    res: i32,
-    flags: u32,
+  user_data: u64,
+  res: i32,
+  flags: u32,
 }
 
 #[repr(C)]
 pub struct io_uring_sq {
-    khead: *mut u32,
-    ktail: *mut u32,
-    kring_mask: *mut u32,
-    kring_entries: *mut u32,
-    kflags: *mut u32,
-    kdropped: *mut u32,
-    array: *mut u32,
-    sqes: *mut io_uring_sqe,
+  khead: *mut u32,
+  ktail: *mut u32,
+  kring_mask: *mut u32,
+  kring_entries: *mut u32,
+  kflags: *mut u32,
+  kdropped: *mut u32,
+  array: *mut u32,
+  sqes: *mut io_uring_sqe,
 
-    sqe_head: u32,
-    sqe_tail: u32,
+  sqe_head: u32,
+  sqe_tail: u32,
 
-    ring_sz: usize,
-    ring_ptr: *mut c_void,
+  ring_sz: usize,
+  ring_ptr: *mut c_void,
 }
 
 impl std::default::Default for io_uring_sq {
-    fn default() -> Self {
-        Self {
-            khead: std::ptr::null_mut(),
-            ktail: std::ptr::null_mut(),
-            kring_mask: std::ptr::null_mut(),
-            kring_entries: std::ptr::null_mut(),
-            kflags: std::ptr::null_mut(),
-            kdropped: std::ptr::null_mut(),
-            array: std::ptr::null_mut(),
-            sqes: std::ptr::null_mut(),
-            sqe_head: 0,
-            sqe_tail: 0,
-            ring_sz: 0,
-            ring_ptr: std::ptr::null_mut(),
-        }
+  fn default() -> Self {
+    Self {
+      khead: std::ptr::null_mut(),
+      ktail: std::ptr::null_mut(),
+      kring_mask: std::ptr::null_mut(),
+      kring_entries: std::ptr::null_mut(),
+      kflags: std::ptr::null_mut(),
+      kdropped: std::ptr::null_mut(),
+      array: std::ptr::null_mut(),
+      sqes: std::ptr::null_mut(),
+      sqe_head: 0,
+      sqe_tail: 0,
+      ring_sz: 0,
+      ring_ptr: std::ptr::null_mut(),
     }
+  }
 }
 
 #[repr(C)]
 struct io_uring_cq {
-    khead: *mut u32,
-    ktail: *mut u32,
-    kring_mask: *mut u32,
-    kring_entries: *mut u32,
-    koverflow: *mut u32,
-    cqes: *mut io_uring_cqe,
+  khead: *mut u32,
+  ktail: *mut u32,
+  kring_mask: *mut u32,
+  kring_entries: *mut u32,
+  koverflow: *mut u32,
+  cqes: *mut io_uring_cqe,
 
-    ring_sz: usize,
-    ring_ptr: *mut c_void,
+  ring_sz: usize,
+  ring_ptr: *mut c_void,
 }
 
 impl std::default::Default for io_uring_cq {
-    fn default() -> Self {
-        Self {
-            khead: std::ptr::null_mut(),
-            ktail: std::ptr::null_mut(),
-            kring_mask: std::ptr::null_mut(),
-            kring_entries: std::ptr::null_mut(),
-            koverflow: std::ptr::null_mut(),
-            cqes: std::ptr::null_mut(),
-            ring_sz: 0,
-            ring_ptr: std::ptr::null_mut(),
-        }
+  fn default() -> Self {
+    Self {
+      khead: std::ptr::null_mut(),
+      ktail: std::ptr::null_mut(),
+      kring_mask: std::ptr::null_mut(),
+      kring_entries: std::ptr::null_mut(),
+      koverflow: std::ptr::null_mut(),
+      cqes: std::ptr::null_mut(),
+      ring_sz: 0,
+      ring_ptr: std::ptr::null_mut(),
     }
+  }
 }
 
 #[repr(C)]
 #[derive(Default)]
 pub struct io_uring {
-    sq: io_uring_sq,
-    cq: io_uring_cq,
-    flags: u32,
-    ring_fd: i32,
+  sq: io_uring_sq,
+  cq: io_uring_cq,
+  flags: u32,
+  ring_fd: i32,
 }
 
 extern "C" {
-    fn io_uring_queue_init(entries: u32, ring: *mut io_uring, flags: u32) -> i32;
-    fn io_uring_queue_exit(ring: *mut io_uring);
-    fn io_uring_cqe_get_data(cqe: *const io_uring_cqe) -> *mut c_void;
-    fn io_uring_get_sqe(ring: *mut io_uring) -> *mut io_uring_sqe;
-    fn io_uring_submit(ring: *mut io_uring) -> i32;
+  fn io_uring_queue_init(entries: u32, ring: *mut io_uring, flags: u32) -> i32;
+  fn io_uring_queue_exit(ring: *mut io_uring);
+  fn io_uring_cqe_get_data(cqe: *const io_uring_cqe) -> *mut c_void;
+  fn io_uring_get_sqe(ring: *mut io_uring) -> *mut io_uring_sqe;
+  fn io_uring_submit(ring: *mut io_uring) -> i32;
 
-    fn rio_io_uring_prep_readv(
-        sqe: *mut io_uring_sqe,
-        fd: i32,
-        iovecs: *const iovec,
-        nr_vecs: u32,
-        offset: isize,
-    );
-    fn rio_io_uring_sqe_set_data(sqe: *mut io_uring_sqe, data: *mut c_void);
-    fn rio_io_uring_wait_cqe(ring: *mut io_uring, cqe_ptr: *mut *mut io_uring_cqe) -> i32;
-    fn rio_io_uring_cqe_get_data(cqe: *const io_uring_cqe) -> *mut c_void;
+  fn rio_io_uring_prep_readv(
+    sqe: *mut io_uring_sqe,
+    fd: i32,
+    iovecs: *const iovec,
+    nr_vecs: u32,
+    offset: isize,
+  );
+  fn rio_io_uring_sqe_set_data(sqe: *mut io_uring_sqe, data: *mut c_void);
+  fn rio_io_uring_wait_cqe(ring: *mut io_uring, cqe_ptr: *mut *mut io_uring_cqe) -> i32;
+  fn rio_io_uring_cqe_get_data(cqe: *const io_uring_cqe) -> *mut c_void;
 
 }
 
 #[repr(C)]
 pub struct iovec {
-    iov_base: *mut c_void,
-    iov_len: usize,
+  iov_base: *mut c_void,
+  iov_len: usize,
 }
 
 impl std::default::Default for iovec {
-    fn default() -> Self {
-        Self {
-            iov_base: std::ptr::null_mut(),
-            iov_len: 0,
-        }
+  fn default() -> Self {
+    Self {
+      iov_base: std::ptr::null_mut(),
+      iov_len: 0,
     }
+  }
 }
 
 impl Clone for iovec {
-    fn clone(&self) -> Self {
-        Self {
-            iov_base: self.iov_base,
-            iov_len: self.iov_len,
-        }
+  fn clone(&self) -> Self {
+    Self {
+      iov_base: self.iov_base,
+      iov_len: self.iov_len,
     }
+  }
 }
 
 pub struct BuffersSequence {
-    bufs: Vec<iovec>,
+  bufs: Vec<iovec>,
 }
 
 impl BuffersSequence {
-    pub fn new() -> Self {
-        Self {
-            bufs: Vec::<iovec>::new(),
-        }
+  pub fn new() -> Self {
+    Self {
+      bufs: Vec::<iovec>::new(),
+    }
+  }
+
+  pub fn resize(&mut self, len: usize) {
+    self.bufs.resize(len, iovec::default());
+  }
+
+  pub fn as_sequence(&mut self) -> &mut [iovec] {
+    &mut *self.bufs
+  }
+
+  pub fn append_buffer(&mut self, len: usize) {
+    let layout = std::alloc::Layout::array::<u8>(len).expect("Requested way too many bytes");
+    let p = unsafe { std::alloc::alloc(layout) };
+    if p.is_null() {
+      panic!("Allocation failure in append_buffer()");
     }
 
-    pub fn resize(&mut self, len: usize) {
-        self.bufs.resize(len, iovec::default());
+    struct DropGuard {
+      p: *mut u8,
+      layout: std::alloc::Layout,
     }
 
-    pub fn as_sequence(&mut self) -> &mut [iovec] {
-        &mut *self.bufs
+    impl Drop for DropGuard {
+      fn drop(&mut self) {
+        unsafe { std::alloc::dealloc(self.p, self.layout) };
+      }
     }
 
-    pub fn append_buffer(&mut self, len: usize) {
-        let layout = std::alloc::Layout::array::<u8>(len).expect("Requested way too many bytes");
-        let p = unsafe { std::alloc::alloc(layout) };
-        if p.is_null() {
-            panic!("Allocation failure in append_buffer()");
-        }
+    let guard = DropGuard { p, layout };
 
-        struct DropGuard {
-            p: *mut u8,
-            layout: std::alloc::Layout,
-        }
+    unsafe { std::ptr::write_bytes(p, 0, len) };
 
-        impl Drop for DropGuard {
-            fn drop(&mut self) {
-                unsafe { std::alloc::dealloc(self.p, self.layout) };
-            }
-        }
+    let iov = iovec {
+      iov_base: guard.p as *mut c_void,
+      iov_len: len,
+    };
 
-        let guard = DropGuard { p, layout };
-
-        unsafe { std::ptr::write_bytes(p, 0, len) };
-
-        let iov = iovec {
-            iov_base: guard.p as *mut c_void,
-            iov_len: len,
-        };
-
-        self.bufs.push(iov);
-        std::mem::forget(guard);
-    }
+    self.bufs.push(iov);
+    std::mem::forget(guard);
+  }
 }
 
 impl Drop for BuffersSequence {
-    fn drop(&mut self) {
-        self.bufs.iter().for_each(|iov: &iovec| unsafe {
-            let layout = std::alloc::Layout::from_size_align_unchecked(iov.iov_len, 1);
-            std::alloc::dealloc(iov.iov_base as *mut u8, layout);
-        });
-    }
+  fn drop(&mut self) {
+    self.bufs.iter().for_each(|iov: &iovec| unsafe {
+      let layout = std::alloc::Layout::from_size_align_unchecked(iov.iov_len, 1);
+      std::alloc::dealloc(iov.iov_base as *mut u8, layout);
+    });
+  }
 }
 
 impl std::default::Default for BuffersSequence {
-    fn default() -> Self {
-        Self::new()
-    }
+  fn default() -> Self {
+    Self::new()
+  }
 }
 
 pub fn cat<P>(path: P)
 where
-    P: std::convert::AsRef<std::path::Path>,
+  P: std::convert::AsRef<std::path::Path>,
 {
-    struct DropGuard<'a> {
-        ring: &'a mut io_uring,
-    }
+  struct DropGuard<'a> {
+    ring: &'a mut io_uring,
+  }
 
-    impl<'a> Drop for DropGuard<'a> {
-        fn drop(&mut self) {
-            println!("Cleaning up the io_uring queue now!");
-            unsafe { io_uring_queue_exit(self.ring) };
+  impl<'a> Drop for DropGuard<'a> {
+    fn drop(&mut self) {
+      println!("Cleaning up the io_uring queue now!");
+      unsafe { io_uring_queue_exit(self.ring) };
+    }
+  }
+
+  let mut ring = io_uring::default();
+
+  let ret = unsafe { io_uring_queue_init(QUEUE_DEPTH, &mut ring, 0) };
+  if ret != 0 {
+    println!("io_uring_queue_init() failed!");
+    return;
+  }
+
+  let guard = DropGuard { ring: &mut ring };
+
+  let file = match std::fs::File::open(&path) {
+    Ok(file) => file,
+    Err(err) => {
+      match err.kind() {
+        std::io::ErrorKind::NotFound => {
+          println!("File does not exist!");
         }
-    }
-
-    let mut ring = io_uring::default();
-
-    let ret = unsafe { io_uring_queue_init(QUEUE_DEPTH, &mut ring, 0) };
-    if ret != 0 {
-        println!("io_uring_queue_init() failed!");
-        return;
-    }
-
-    let guard = DropGuard { ring: &mut ring };
-
-    let file = match std::fs::File::open(&path) {
-        Ok(file) => file,
-        Err(err) => {
-            match err.kind() {
-                std::io::ErrorKind::NotFound => {
-                    println!("File does not exist!");
-                }
-                _ => {
-                    println!("Unhandled error");
-                }
-            }
-
-            return;
+        _ => {
+          println!("Unhandled error");
         }
-    };
+      }
 
-    let info = match file.metadata() {
-        Ok(info) => info,
-        Err(_) => {
-            println!(
-                "I'm not sure how fetching metadata on a file could fail but lo and behold it did"
-            );
-            return;
-        }
-    };
+      return;
+    }
+  };
 
-    let mut bufs = BuffersSequence::new();
+  let info = match file.metadata() {
+    Ok(info) => info,
+    Err(_) => {
+      println!("I'm not sure how fetching metadata on a file could fail but lo and behold it did");
+      return;
+    }
+  };
 
-    let mut bytes_remaining = info.len();
-    while bytes_remaining > 0 {
-        let mut bytes_to_read = bytes_remaining;
-        if bytes_to_read > BLOCK_SZ.into() {
-            bytes_to_read = BLOCK_SZ.into();
-        }
+  let mut bufs = BuffersSequence::new();
 
-        bufs.append_buffer(bytes_to_read as usize);
-        bytes_remaining = bytes_remaining.saturating_sub(bytes_to_read);
+  let mut bytes_remaining = info.len();
+  while bytes_remaining > 0 {
+    let mut bytes_to_read = bytes_remaining;
+    if bytes_to_read > BLOCK_SZ.into() {
+      bytes_to_read = BLOCK_SZ.into();
     }
 
-    let fd = file.as_raw_fd();
+    bufs.append_buffer(bytes_to_read as usize);
+    bytes_remaining = bytes_remaining.saturating_sub(bytes_to_read);
+  }
 
-    let iovecs = bufs.as_sequence();
+  let fd = file.as_raw_fd();
 
-    unsafe {
-        let sqe = io_uring_get_sqe(guard.ring);
-        rio_io_uring_prep_readv(sqe, fd, iovecs.as_mut_ptr(), iovecs.len() as u32, 0);
-        io_uring_submit(guard.ring);
-    }
+  let iovecs = bufs.as_sequence();
 
-    let mut cqe: *mut io_uring_cqe = std::ptr::null_mut();
-    let r = unsafe { rio_io_uring_wait_cqe(guard.ring, &mut cqe) };
-    if r < 0 {
-        panic!("waiting on io_uring failed");
-    }
+  unsafe {
+    let sqe = io_uring_get_sqe(guard.ring);
+    rio_io_uring_prep_readv(sqe, fd, iovecs.as_mut_ptr(), iovecs.len() as u32, 0);
+    io_uring_submit(guard.ring);
+  }
 
-    if unsafe { (*cqe).res } < 0 {
-        panic!("async read failed!");
-    }
+  let mut cqe: *mut io_uring_cqe = std::ptr::null_mut();
+  let r = unsafe { rio_io_uring_wait_cqe(guard.ring, &mut cqe) };
+  if r < 0 {
+    panic!("waiting on io_uring failed");
+  }
 
-    bufs.as_sequence().iter().for_each(|iov: &iovec| {
-        let p = unsafe { std::slice::from_raw_parts(iov.iov_base as *mut u8, iov.iov_len) };
-        let s = std::str::from_utf8(p).expect("File was not utf-8");
-        print!("{s}");
-    });
+  if unsafe { (*cqe).res } < 0 {
+    panic!("async read failed!");
+  }
+
+  bufs.as_sequence().iter().for_each(|iov: &iovec| {
+    let p = unsafe { std::slice::from_raw_parts(iov.iov_base as *mut u8, iov.iov_len) };
+    let s = std::str::from_utf8(p).expect("File was not utf-8");
+    print!("{s}");
+  });
 }
 
 pub fn main() {
-    cat("src/bin/cat.rs");
+  cat("src/bin/cat.rs");
 }
