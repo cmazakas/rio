@@ -35,6 +35,9 @@ extern "C" {
   );
   fn rio_io_uring_wait_cqe(ring: *mut io_uring, res: &mut i32) -> *mut io_uring_cqe;
   fn rio_io_uring_cqe_seen(ring: *mut io_uring, cqe: *mut io_uring_cqe);
+
+  fn rio_timerfd_create() -> i32;
+  fn rio_timerfd_settime(fd: i32, millis: i32) -> i32;
 }
 
 #[must_use]
@@ -74,4 +77,14 @@ pub unsafe fn io_uring_wait_cqe(ring: *mut io_uring, res: &mut i32) -> *mut io_u
 
 pub unsafe fn io_uring_cqe_seen(ring: *mut io_uring, cqe: *mut io_uring_cqe) {
   rio_io_uring_cqe_seen(ring, cqe);
+}
+
+#[must_use]
+pub fn timerfd_create() -> i32 {
+  unsafe { rio_timerfd_create() }
+}
+
+#[must_use]
+pub unsafe fn timerfd_settime(fd: i32, millis: i32) -> i32 {
+  rio_timerfd_settime(fd, millis)
 }
