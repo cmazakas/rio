@@ -1,8 +1,8 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::similar_names)]
-#![allow(clippy::missing_panics_doc)]
+#![allow(clippy::missing_panics_doc, clippy::too_many_lines)]
 
-use std::{future::Future, io::Write, os::unix::prelude::AsRawFd};
+use std::{future::Future, os::unix::prelude::AsRawFd};
 
 extern crate rio;
 
@@ -59,23 +59,27 @@ mod io {
     pub ring: *mut rio::liburing::io_uring,
   }
 
+  pub struct TimerFutureSharedState {
+    pub done: bool,
+  }
+
   struct TimerFuture {
-    done: bool,
+    state: std::rc::Rc<std::cell::UnsafeCell<TimerFutureSharedState>>,
   }
 
   impl std::future::Future for TimerFuture {
     type Output = ();
 
     fn poll(
-      mut self: std::pin::Pin<&mut Self>,
+      self: std::pin::Pin<&mut Self>,
       _cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
-      if (*self).done {
-        println!("So wtf lol?");
+      let p = unsafe { (*std::rc::Rc::as_ptr(&(*self).state)).get() };
+      let done = unsafe { (*p).done };
+
+      if done {
         std::task::Poll::Ready(())
       } else {
-        println!("TimerFuture should be suspending!");
-        (*self).done = true;
         std::task::Poll::Pending
       }
     }
@@ -112,15 +116,27 @@ mod io {
           "Failed to set timer on FD"
         );
 
+        let fut = TimerFuture {
+          state: std::rc::Rc::new(std::cell::UnsafeCell::new(TimerFutureSharedState {
+            done: false,
+          })),
+        };
+
         let ring = (*std::rc::Rc::as_ptr(&self.ioc)).ring;
         let sqe = rio::liburing::make_sqe(ring);
-        let buf = &mut *self.buf as *mut _ as *mut rio::libc::c_void;
+        let buf = std::ptr::addr_of_mut!(*self.buf).cast::<rio::libc::c_void>();
+
+        let p = fut.state.clone();
+        rio::liburing::io_uring_sqe_set_data(
+          sqe,
+          std::rc::Rc::into_raw(p).cast::<rio::libc::c_void>() as *mut rio::libc::c_void,
+        );
+
         rio::liburing::io_uring_prep_read(sqe, self.fd, buf, 8, 0);
         rio::liburing::io_uring_submit(ring);
-        println!("Alright, everything should've been set to the timer...");
-      };
 
-      TimerFuture { done: false }
+        fut
+      }
     }
   }
 }
@@ -143,7 +159,7 @@ pub fn main() {
     rio::liburing::io_uring_prep_accept_af_unix(sqe, listener_fd);
     rio::liburing::io_uring_submit(ring);
 
-    let mut client =
+    let client =
       if let Ok(client) = std::os::unix::net::UnixStream::connect("/tmp/asdfasdfasfasdf.socket") {
         client
       } else {
@@ -154,9 +170,6 @@ pub fn main() {
     let mut res = -1;
     let cqe = rio::liburing::io_uring_wait_cqe(ring, &mut res);
     rio::liburing::io_uring_cqe_seen(ring, cqe);
-
-    println!("Client Unix domain socket connected successfully!");
-    println!("Connected socket is: {res}");
 
     let server_fd = res;
     let mut buf = [0_u8; 512];
@@ -172,22 +185,14 @@ pub fn main() {
 
     rio::liburing::io_uring_submit(ring);
 
-    // let mut tasks = Vec::<std::pin::Pin<Box<dyn std::future::Future<Output = ()>>>>::new();
-    // client.write_all(b"hello, world!").unwrap();
+    let mut tasks = Vec::<std::pin::Pin<Box<dyn std::future::Future<Output = ()>>>>::new();
 
     let waker = std::sync::Arc::new(task::Waker {
       client: std::sync::Arc::new(std::sync::Mutex::new(client)),
     })
     .into();
 
-    // let mut fut = Box::pin(async {
-    //   println!("Starting future!");
-    //   println!("Going to sleep now");
-    //   task::Sleeper::new().await;
-    //   println!("Sleep is done!");
-    // });
-
-    let mut fut = Box::pin(async {
+    tasks.push(Box::pin(async {
       println!("Starting the timer coro...");
       let ioc = std::rc::Rc::new(io::IoContext { ring });
 
@@ -198,24 +203,73 @@ pub fn main() {
       timer.async_wait().await;
 
       println!("Holy shit, it actually works");
-    });
+    }));
 
-    let mut cx = std::task::Context::from_waker(&waker);
+    tasks.push(Box::pin(async {
+      println!("Starting the timer coro...");
+      let ioc = std::rc::Rc::new(io::IoContext { ring });
 
-    while fut.as_mut().poll(&mut cx).is_pending() {
-      res = -1;
+      let mut timer = io::Timer::new(ioc);
+      timer.expires_after(5000);
+
+      println!("Suspending now...");
+      timer.async_wait().await;
+
+      println!("Holy shit, it actually works");
+    }));
+
+    tasks.push(Box::pin(async {
+      println!("Starting the timer coro...");
+      let ioc = std::rc::Rc::new(io::IoContext { ring });
+
+      let mut timer = io::Timer::new(ioc);
+      timer.expires_after(5000);
+
+      println!("Suspending now...");
+      timer.async_wait().await;
+
+      println!("Holy shit, it actually works");
+    }));
+
+    tasks.push(Box::pin(async {
+      println!("Starting the timer coro...");
+      let ioc = std::rc::Rc::new(io::IoContext { ring });
+
+      let mut timer = io::Timer::new(ioc);
+      timer.expires_after(5000);
+
+      println!("Suspending now...");
+      timer.async_wait().await;
+
+      println!("Holy shit, it actually works");
+    }));
+
+    'outer: while !tasks.is_empty() {
+      let mut idx = 0;
+      while idx < tasks.len() {
+        let fut = &mut tasks[idx];
+        let mut cx = std::task::Context::from_waker(&waker);
+        if fut.as_mut().poll(&mut cx).is_ready() {
+          tasks.remove(idx);
+          if tasks.is_empty() {
+            break 'outer;
+          }
+        } else {
+          idx += 1;
+        }
+      }
+
       let cqe = rio::liburing::io_uring_wait_cqe(ring, &mut res);
+      let p = rio::liburing::io_uring_cqe_get_data(cqe);
+      if !p.is_null() {
+        let p = p as *const _ as *const std::cell::UnsafeCell<io::TimerFutureSharedState>;
+        let state = std::rc::Rc::from_raw(p);
+
+        let p = (*std::rc::Rc::as_ptr(&state)).get();
+        (*p).done = true;
+      }
       rio::liburing::io_uring_cqe_seen(ring, cqe);
     }
-
-    // println!("Read is done!");
-    // if res == -1 {
-    //   println!("Failed to read from Unix domain socket");
-    // } else {
-    //   let nread = res as usize;
-    //   println!("Read {res} bytes");
-    //   println!("Message: {}", std::str::from_utf8(&buf[..nread]).unwrap());
-    // }
 
     rio::liburing::teardown(ring);
   }

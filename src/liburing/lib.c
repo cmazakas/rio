@@ -32,6 +32,11 @@ struct io_uring_sqe *rio_make_sqe(struct io_uring *ring)
   return io_uring_get_sqe(ring);
 }
 
+void rio_io_uring_sqe_set_data(struct io_uring_sqe *sqe, void *data)
+{
+  io_uring_sqe_set_data(sqe, data);
+}
+
 void rio_io_uring_prep_accept_af_unix(struct io_uring_sqe *sqe, int fd)
 {
   struct sockaddr_un sockaddr;
@@ -61,6 +66,11 @@ struct io_uring_cqe *rio_io_uring_wait_cqe(struct io_uring *ring, int *res)
   }
   *res = cqe->res;
   return cqe;
+}
+
+void *rio_io_uring_cqe_get_data(const struct io_uring_cqe *cqe)
+{
+  return io_uring_cqe_get_data(cqe);
 }
 
 void rio_io_uring_cqe_seen(struct io_uring *ring, struct io_uring_cqe *cqe)
