@@ -1,6 +1,11 @@
 #![warn(clippy::pedantic)]
-#![allow(clippy::similar_names)]
-#![allow(clippy::missing_panics_doc, clippy::too_many_lines)]
+#![allow(
+  clippy::missing_panics_doc,
+  clippy::too_many_lines,
+  clippy::module_name_repetitions,
+  clippy::similar_names,
+  clippy::cast_ptr_alignment
+)]
 
 use std::os::unix::prelude::AsRawFd;
 
@@ -9,37 +14,37 @@ extern crate rio;
 mod task {
   use std::io::Write;
 
-  pub struct Sleeper {
-    t: Option<std::thread::JoinHandle<()>>,
-  }
+  // pub struct Sleeper {
+  //   t: Option<std::thread::JoinHandle<()>>,
+  // }
 
-  impl Sleeper {
-    pub fn new() -> Self {
-      Self { t: None }
-    }
-  }
+  // impl Sleeper {
+  //   pub fn new() -> Self {
+  //     Self { t: None }
+  //   }
+  // }
 
-  impl std::future::Future for Sleeper {
-    type Output = ();
-    fn poll(
-      mut self: std::pin::Pin<&mut Self>,
-      cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Self::Output> {
-      if self.as_mut().t.is_none() {
-        let waker = cx.waker().clone();
-        self.t = Some(std::thread::spawn(move || {
-          std::thread::sleep(std::time::Duration::from_secs(3));
-          waker.wake();
-        }));
+  // impl std::future::Future for Sleeper {
+  //   type Output = ();
+  //   fn poll(
+  //     mut self: std::pin::Pin<&mut Self>,
+  //     cx: &mut std::task::Context<'_>,
+  //   ) -> std::task::Poll<Self::Output> {
+  //     if self.as_mut().t.is_none() {
+  //       let waker = cx.waker().clone();
+  //       self.t = Some(std::thread::spawn(move || {
+  //         std::thread::sleep(std::time::Duration::from_secs(3));
+  //         waker.wake();
+  //       }));
 
-        std::task::Poll::Pending
-      } else {
-        let t = self.as_mut().t.take().unwrap();
-        t.join().unwrap();
-        std::task::Poll::Ready(())
-      }
-    }
-  }
+  //       std::task::Poll::Pending
+  //     } else {
+  //       let t = self.as_mut().t.take().unwrap();
+  //       t.join().unwrap();
+  //       std::task::Poll::Ready(())
+  //     }
+  //   }
+  // }
 
   pub struct Waker {
     pub client: std::sync::Arc<std::sync::Mutex<std::os::unix::net::UnixStream>>,
@@ -264,7 +269,7 @@ pub fn main() {
       let mut cx = std::task::Context::from_waker(&waker);
 
       if fut.as_mut().poll(&mut cx).is_ready() {
-        tasks.remove(idx);
+        drop(tasks.remove(idx));
         if tasks.is_empty() {
           break;
         }
@@ -277,7 +282,7 @@ pub fn main() {
       let cqe = rio::liburing::io_uring_wait_cqe(ring, &mut res);
       let p = rio::liburing::io_uring_cqe_get_data(cqe);
       if !p.is_null() {
-        let p = p as *const _ as *const std::cell::UnsafeCell<io::FdFutureSharedState>;
+        let p = p.cast::<std::cell::UnsafeCell<io::FdFutureSharedState>>();
         let state = std::rc::Rc::from_raw(p);
 
         let p = (*std::rc::Rc::as_ptr(&state)).get();
@@ -303,11 +308,13 @@ pub fn main() {
         if is_done {
           let mut idx = 0;
           while idx < tasks.len() {
-            let a = std::ptr::addr_of!(*tasks[idx]) as *const dyn std::future::Future<Output = ()>
-              as *const ();
+            let a = (std::ptr::addr_of!(*tasks[idx])
+              as *const dyn std::future::Future<Output = ()>)
+              .cast::<()>();
+
             let b = taskp as *const ();
             if a == b {
-              tasks.remove(idx);
+              drop(tasks.remove(idx));
               break;
             }
             idx += 1;
