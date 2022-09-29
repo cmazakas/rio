@@ -101,28 +101,29 @@ mod io {
   pub struct FdFutureSharedState {
     pub done: bool,
     pub fd: i32,
+    pub res: i32,
   }
 
-  pub struct FdFuture {
-    state: std::rc::Rc<std::cell::UnsafeCell<FdFutureSharedState>>,
-  }
+  // pub struct FdFuture {
+  //   state: std::rc::Rc<std::cell::UnsafeCell<FdFutureSharedState>>,
+  // }
 
-  impl std::future::Future for FdFuture {
-    type Output = ();
+  // impl std::future::Future for FdFuture {
+  //   type Output = ();
 
-    fn poll(
-      self: std::pin::Pin<&mut Self>,
-      _cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Self::Output> {
-      let p = unsafe { (*std::rc::Rc::as_ptr(&(*self).state)).get() };
-      let done = unsafe { (*p).done };
-      if done {
-        std::task::Poll::Ready(())
-      } else {
-        std::task::Poll::Pending
-      }
-    }
-  }
+  //   fn poll(
+  //     self: std::pin::Pin<&mut Self>,
+  //     _cx: &mut std::task::Context<'_>,
+  //   ) -> std::task::Poll<Self::Output> {
+  //     let p = unsafe { (*std::rc::Rc::as_ptr(&(*self).state)).get() };
+  //     let done = unsafe { (*p).done };
+  //     if done {
+  //       std::task::Poll::Ready(())
+  //     } else {
+  //       std::task::Poll::Pending
+  //     }
+  //   }
+  // }
 
   pub struct TimerFuture {
     initiated: bool,
@@ -142,8 +143,12 @@ mod io {
     }
   }
 
+  pub enum Err {
+    ReadFailed,
+  }
+
   impl std::future::Future for TimerFuture {
-    type Output = ();
+    type Output = Result<(), Err>;
 
     fn poll(
       mut self: std::pin::Pin<&mut Self>,
@@ -178,7 +183,10 @@ mod io {
 
       let done = unsafe { (*p).done };
       if done {
-        std::task::Poll::Ready(())
+        if unsafe { (*p).res < 0 } {
+          return std::task::Poll::Ready(Err(Err::ReadFailed));
+        }
+        std::task::Poll::Ready(Ok(()))
       } else {
         std::task::Poll::Pending
       }
@@ -203,7 +211,7 @@ mod io {
       self.millis = millis;
     }
 
-    pub fn async_wait(&mut self) -> impl std::future::Future<Output = ()> + '_ {
+    pub fn async_wait(&mut self) -> impl std::future::Future<Output = Result<(), Err>> + '_ {
       unsafe {
         assert!(
           -1 != rio::liburing::timerfd_settime(self.fd, self.millis),
@@ -215,6 +223,7 @@ mod io {
         let shared_statep = std::rc::Rc::new(std::cell::UnsafeCell::new(FdFutureSharedState {
           done: false,
           fd,
+          res: -1,
         }));
 
         TimerFuture::new(self.ioc.clone(), shared_statep)
@@ -224,6 +233,17 @@ mod io {
 }
 
 pub fn main() {
+  pub struct CQESeenGuard {
+    ring: *mut rio::liburing::io_uring,
+    cqe: *mut rio::liburing::io_uring_cqe,
+  }
+
+  impl Drop for CQESeenGuard {
+    fn drop(&mut self) {
+      unsafe { rio::liburing::io_uring_cqe_seen(self.ring, self.cqe) };
+    }
+  }
+
   unsafe {
     let ioc = io::IoContext::new();
     let ring = ioc.get_ring();
@@ -281,13 +301,24 @@ pub fn main() {
         timer.expires_after(time);
 
         println!("Suspending now...");
-        timer.async_wait().await;
-
-        println!("waited successfully for {} seconds!", idx + 1);
+        match timer.async_wait().await {
+          Ok(_) => {
+            println!("waited successfully for {} seconds!", idx + 1);
+          }
+          Err(_) => {
+            println!("Timer read failed!");
+          }
+        }
 
         println!("Going to wait again...");
-        timer.async_wait().await;
-        println!("waited succesfully, again, for {} seconds", idx + 1);
+        match timer.async_wait().await {
+          Ok(_) => {
+            println!("waited succesfully, again, for {} seconds", idx + 1);
+          }
+          Err(_) => {
+            println!("Timer read failed!");
+          }
+        }
       }));
     }
 
@@ -317,6 +348,8 @@ pub fn main() {
 
     while !tasks.is_empty() {
       let cqe = rio::liburing::io_uring_wait_cqe(ring, &mut res);
+      let _guard = CQESeenGuard { ring, cqe };
+
       let p = rio::liburing::io_uring_cqe_get_data(cqe);
       if !p.is_null() {
         let p = p.cast::<std::cell::UnsafeCell<io::FdFutureSharedState>>();
@@ -324,6 +357,7 @@ pub fn main() {
 
         let p = (*std::rc::Rc::as_ptr(&state)).get();
         (*p).done = true;
+        (*p).res = res;
 
         let fd = (*p).fd;
 
@@ -358,7 +392,6 @@ pub fn main() {
           }
         }
       }
-      rio::liburing::io_uring_cqe_seen(ring, cqe);
     }
 
     println!("All tasks completed running");
