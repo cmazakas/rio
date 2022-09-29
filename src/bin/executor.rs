@@ -124,11 +124,71 @@ mod io {
     }
   }
 
+  pub struct TimerFuture {
+    initiated: bool,
+    ioc: IoContext,
+    state: std::rc::Rc<std::cell::UnsafeCell<FdFutureSharedState>>,
+    buf: std::pin::Pin<Box<u64>>,
+  }
+
+  impl TimerFuture {
+    fn new(ioc: IoContext, state: std::rc::Rc<std::cell::UnsafeCell<FdFutureSharedState>>) -> Self {
+      Self {
+        initiated: false,
+        state,
+        ioc,
+        buf: Box::pin(0_u64),
+      }
+    }
+  }
+
+  impl std::future::Future for TimerFuture {
+    type Output = ();
+
+    fn poll(
+      mut self: std::pin::Pin<&mut Self>,
+      _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+      let p = unsafe { (*std::rc::Rc::as_ptr(&(*self).state)).get() };
+
+      if !self.initiated {
+        let fd = unsafe { (*p).fd };
+        let ioc_state = unsafe { &mut *self.ioc.get_state() };
+        ioc_state.fd_task_map.insert(fd, ioc_state.task.unwrap());
+
+        let ring = ioc_state.ring;
+        let sqe = unsafe { rio::liburing::make_sqe(ring) };
+        let buf = std::ptr::addr_of_mut!(*self.buf).cast::<rio::libc::c_void>();
+
+        unsafe {
+          rio::liburing::io_uring_sqe_set_data(
+            sqe,
+            std::rc::Rc::into_raw(self.state.clone()).cast::<rio::libc::c_void>()
+              as *mut rio::libc::c_void,
+          );
+        }
+
+        unsafe { rio::liburing::io_uring_prep_read(sqe, fd, buf, 8, 0) };
+        unsafe { rio::liburing::io_uring_submit(ring) };
+
+        self.initiated = true;
+
+        return std::task::Poll::Pending;
+      }
+
+      let done = unsafe { (*p).done };
+      if done {
+        std::task::Poll::Ready(())
+      } else {
+        std::task::Poll::Pending
+      }
+    }
+  }
+
   pub struct Timer {
     fd: i32,
     millis: i32,
     ioc: IoContext,
-    buf: std::pin::Pin<Box<u64>>,
   }
 
   impl Timer {
@@ -136,19 +196,14 @@ mod io {
       let fd = rio::liburing::timerfd_create();
       assert!(fd != -1, "Can't create a timer");
 
-      Self {
-        fd,
-        millis: 0,
-        ioc,
-        buf: Box::pin(0_u64),
-      }
+      Self { fd, millis: 0, ioc }
     }
 
     pub fn expires_after(&mut self, millis: i32) {
       self.millis = millis;
     }
 
-    pub fn async_wait(&mut self) -> impl std::future::Future<Output = ()> {
+    pub fn async_wait(&mut self) -> impl std::future::Future<Output = ()> + '_ {
       unsafe {
         assert!(
           -1 != rio::liburing::timerfd_settime(self.fd, self.millis),
@@ -157,30 +212,12 @@ mod io {
 
         let fd = self.fd;
 
-        let fut = FdFuture {
-          state: std::rc::Rc::new(std::cell::UnsafeCell::new(FdFutureSharedState {
-            done: false,
-            fd,
-          })),
-        };
+        let shared_statep = std::rc::Rc::new(std::cell::UnsafeCell::new(FdFutureSharedState {
+          done: false,
+          fd,
+        }));
 
-        let state = &mut *self.ioc.get_state();
-        state.fd_task_map.insert(fd, state.task.unwrap());
-
-        let ring = state.ring;
-        let sqe = rio::liburing::make_sqe(ring);
-        let buf = std::ptr::addr_of_mut!(*self.buf).cast::<rio::libc::c_void>();
-
-        rio::liburing::io_uring_sqe_set_data(
-          sqe,
-          std::rc::Rc::into_raw(fut.state.clone()).cast::<rio::libc::c_void>()
-            as *mut rio::libc::c_void,
-        );
-
-        rio::liburing::io_uring_prep_read(sqe, fd, buf, 8, 0);
-        rio::liburing::io_uring_submit(ring);
-
-        fut
+        TimerFuture::new(self.ioc.clone(), shared_statep)
       }
     }
   }
@@ -250,7 +287,7 @@ pub fn main() {
 
         println!("Going to wait again...");
         timer.async_wait().await;
-        println!("waited succesffully, again, for {} seconds", idx + 1);
+        println!("waited succesfully, again, for {} seconds", idx + 1);
       }));
     }
 
