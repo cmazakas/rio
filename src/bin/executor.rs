@@ -7,8 +7,6 @@
   clippy::cast_ptr_alignment
 )]
 
-use std::os::unix::prelude::AsRawFd;
-
 extern crate rio;
 
 mod task {
@@ -56,14 +54,25 @@ mod task {
       client.write_all(b"rawr").unwrap();
     }
   }
+
+  pub struct NopWaker {}
+
+  impl std::task::Wake for NopWaker {
+    fn wake(self: std::sync::Arc<Self>) {}
+  }
 }
 
 mod io {
+  type Task = dyn std::future::Future<Output = ()>;
+
   pub struct IoContextState {
-    pub ring: *mut rio::liburing::io_uring,
-    pub task: Option<*mut dyn std::future::Future<Output = ()>>,
-    pub fd_task_map: std::collections::HashMap<i32, *mut dyn std::future::Future<Output = ()>>,
+    ring: *mut rio::liburing::io_uring,
+    task_ctx: Option<*mut dyn std::future::Future<Output = ()>>,
+    tasks: Vec<Box<Task>>,
+    fd_task_map: std::collections::HashMap<i32, *mut dyn std::future::Future<Output = ()>>,
   }
+
+  impl IoContextState {}
 
   impl Drop for IoContextState {
     fn drop(&mut self) {
@@ -83,18 +92,106 @@ mod io {
       Self {
         p: std::rc::Rc::new(std::cell::UnsafeCell::new(IoContextState {
           ring,
-          task: None,
+          task_ctx: None,
+          tasks: Vec::default(),
           fd_task_map: std::collections::HashMap::default(),
         })),
       }
     }
 
-    pub unsafe fn get_state(&self) -> *mut IoContextState {
+    unsafe fn get_state(&self) -> *mut IoContextState {
       (*std::rc::Rc::as_ptr(&self.p)).get()
     }
 
-    pub unsafe fn get_ring(&self) -> *mut rio::liburing::io_uring {
-      (*self.get_state()).ring
+    pub fn post(&mut self, task: Box<Task>) {
+      let state = unsafe { &mut *self.get_state() };
+      state.tasks.push(task);
+    }
+
+    pub fn run(&mut self) {
+      pub struct CQESeenGuard {
+        ring: *mut rio::liburing::io_uring,
+        cqe: *mut rio::liburing::io_uring_cqe,
+      }
+
+      impl Drop for CQESeenGuard {
+        fn drop(&mut self) {
+          unsafe { rio::liburing::io_uring_cqe_seen(self.ring, self.cqe) };
+        }
+      }
+
+      let waker = std::sync::Arc::new(crate::task::NopWaker {}).into();
+
+      let state = unsafe { &mut *self.get_state() };
+
+      let mut idx = 0;
+      while idx < state.tasks.len() {
+        let task: *mut _ = std::ptr::addr_of_mut!(*state.tasks[idx]);
+        state.task_ctx = Some(task);
+
+        let mut fut = unsafe { std::pin::Pin::new_unchecked(&mut *state.tasks[idx]) };
+        let mut cx = std::task::Context::from_waker(&waker);
+
+        if fut.as_mut().poll(&mut cx).is_ready() {
+          drop(state.tasks.remove(idx));
+          if state.tasks.is_empty() {
+            break;
+          }
+        } else {
+          idx += 1;
+        }
+      }
+
+      let mut res = -1;
+      while !state.tasks.is_empty() {
+        let ring = state.ring;
+        let cqe = unsafe { rio::liburing::io_uring_wait_cqe(ring, &mut res) };
+        let _guard = CQESeenGuard { ring, cqe };
+
+        let p = unsafe { rio::liburing::io_uring_cqe_get_data(cqe) };
+
+        if !p.is_null() {
+          let p = p.cast::<std::cell::UnsafeCell<crate::io::FdFutureSharedState>>();
+          let cqe_state = unsafe { std::rc::Rc::from_raw(p) };
+
+          let p = unsafe { (*std::rc::Rc::as_ptr(&cqe_state)).get() };
+          unsafe {
+            (*p).done = true;
+            (*p).res = res;
+          }
+
+          let fd = unsafe { (*p).fd };
+
+          let task = state.fd_task_map.get(&fd).unwrap();
+          let taskp = *task;
+          state.fd_task_map.remove(&fd);
+
+          state.task_ctx = Some(taskp);
+
+          let is_done = {
+            let task = unsafe { std::pin::Pin::new_unchecked(&mut *taskp) };
+            let mut cx = std::task::Context::from_waker(&waker);
+
+            task.poll(&mut cx).is_ready()
+          };
+
+          if is_done {
+            let mut idx = 0;
+            while idx < state.tasks.len() {
+              let a = (std::ptr::addr_of!(*state.tasks[idx])
+                as *const dyn std::future::Future<Output = ()>)
+                .cast::<()>();
+
+              let b = taskp as *const ();
+              if a == b {
+                drop(state.tasks.remove(idx));
+                break;
+              }
+              idx += 1;
+            }
+          }
+        }
+      }
     }
   }
 
@@ -155,41 +252,43 @@ mod io {
       _cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
       let p = unsafe { (*std::rc::Rc::as_ptr(&(*self).state)).get() };
-
-      if !self.initiated {
-        let fd = unsafe { (*p).fd };
-        let ioc_state = unsafe { &mut *self.ioc.get_state() };
-        ioc_state.fd_task_map.insert(fd, ioc_state.task.unwrap());
-
-        let ring = ioc_state.ring;
-        let sqe = unsafe { rio::liburing::make_sqe(ring) };
-        let buf = std::ptr::addr_of_mut!(*self.buf).cast::<rio::libc::c_void>();
-
-        unsafe {
-          rio::liburing::io_uring_sqe_set_data(
-            sqe,
-            std::rc::Rc::into_raw(self.state.clone()).cast::<rio::libc::c_void>()
-              as *mut rio::libc::c_void,
-          );
+      if self.initiated {
+        let done = unsafe { (*p).done };
+        if !done {
+          return std::task::Poll::Pending;
         }
 
-        unsafe { rio::liburing::io_uring_prep_read(sqe, fd, buf, 8, 0) };
-        unsafe { rio::liburing::io_uring_submit(ring) };
-
-        self.initiated = true;
-
-        return std::task::Poll::Pending;
-      }
-
-      let done = unsafe { (*p).done };
-      if done {
         if unsafe { (*p).res < 0 } {
           return std::task::Poll::Ready(Err(Err::ReadFailed));
         }
-        std::task::Poll::Ready(Ok(()))
-      } else {
-        std::task::Poll::Pending
+
+        return std::task::Poll::Ready(Ok(()));
       }
+
+      let fd = unsafe { (*p).fd };
+      let ioc_state = unsafe { &mut *self.ioc.get_state() };
+      ioc_state
+        .fd_task_map
+        .insert(fd, ioc_state.task_ctx.unwrap());
+
+      let ring = ioc_state.ring;
+      let sqe = unsafe { rio::liburing::make_sqe(ring) };
+      let buf = std::ptr::addr_of_mut!(*self.buf).cast::<rio::libc::c_void>();
+
+      unsafe {
+        rio::liburing::io_uring_sqe_set_data(
+          sqe,
+          std::rc::Rc::into_raw(self.state.clone()).cast::<rio::libc::c_void>()
+            as *mut rio::libc::c_void,
+        );
+      }
+
+      unsafe { rio::liburing::io_uring_prep_read(sqe, fd, buf, 8, 0) };
+      unsafe { rio::liburing::io_uring_submit(ring) };
+
+      self.initiated = true;
+
+      std::task::Poll::Pending
     }
   }
 
@@ -233,167 +332,40 @@ mod io {
 }
 
 pub fn main() {
-  pub struct CQESeenGuard {
-    ring: *mut rio::liburing::io_uring,
-    cqe: *mut rio::liburing::io_uring_cqe,
-  }
+  let mut ioc = io::IoContext::new();
 
-  impl Drop for CQESeenGuard {
-    fn drop(&mut self) {
-      unsafe { rio::liburing::io_uring_cqe_seen(self.ring, self.cqe) };
-    }
-  }
+  for idx in 0..5 {
+    let io = ioc.clone();
+    ioc.post(Box::new(async move {
+      println!("Starting the timer coro...");
 
-  unsafe {
-    let ioc = io::IoContext::new();
-    let ring = ioc.get_ring();
+      let mut timer = io::Timer::new(io);
+      let time = (idx + 1) * 1000;
+      timer.expires_after(time);
 
-    let sqe = rio::liburing::make_sqe(ring);
-
-    let listener =
-      if let Ok(listener) = std::os::unix::net::UnixListener::bind("/tmp/asdfasdfasfasdf.socket") {
-        listener
-      } else {
-        println!("failed to acquire local unix socket!");
-        return;
-      };
-
-    let listener_fd = listener.as_raw_fd();
-
-    rio::liburing::io_uring_prep_accept_af_unix(sqe, listener_fd);
-    rio::liburing::io_uring_submit(ring);
-
-    let client =
-      if let Ok(client) = std::os::unix::net::UnixStream::connect("/tmp/asdfasdfasfasdf.socket") {
-        client
-      } else {
-        println!("Client Unix domain socket failed to connect");
-        return;
-      };
-
-    let mut res = -1;
-    let cqe = rio::liburing::io_uring_wait_cqe(ring, &mut res);
-    rio::liburing::io_uring_cqe_seen(ring, cqe);
-
-    let server_fd = res;
-    let mut buf = [0_u8; 512];
-
-    let sqe = rio::liburing::make_sqe(ring);
-    rio::liburing::io_uring_prep_read(
-      sqe,
-      server_fd,
-      (&mut buf)[..].as_mut_ptr().cast::<rio::libc::c_void>(),
-      buf.len().try_into().unwrap(),
-      0,
-    );
-
-    rio::liburing::io_uring_submit(ring);
-
-    let mut tasks = Vec::<Box<dyn std::future::Future<Output = ()>>>::new();
-
-    for idx in 0..5 {
-      let ioc = ioc.clone();
-      tasks.push(Box::new(async move {
-        println!("Starting the timer coro...");
-
-        let mut timer = io::Timer::new(ioc);
-        let time = (idx + 1) * 1000;
-        timer.expires_after(time);
-
-        println!("Suspending now...");
-        match timer.async_wait().await {
-          Ok(_) => {
-            println!("waited successfully for {} seconds!", idx + 1);
-          }
-          Err(_) => {
-            println!("Timer read failed!");
-          }
+      println!("Suspending now...");
+      match timer.async_wait().await {
+        Ok(_) => {
+          println!("waited successfully for {} seconds!", idx + 1);
         }
-
-        println!("Going to wait again...");
-        match timer.async_wait().await {
-          Ok(_) => {
-            println!("waited succesfully, again, for {} seconds", idx + 1);
-          }
-          Err(_) => {
-            println!("Timer read failed!");
-          }
-        }
-      }));
-    }
-
-    let waker = std::sync::Arc::new(task::Waker {
-      client: std::sync::Arc::new(std::sync::Mutex::new(client)),
-    })
-    .into();
-
-    let mut idx = 0;
-    while idx < tasks.len() {
-      let state = &mut *ioc.get_state();
-      let task: *mut _ = std::ptr::addr_of_mut!(*tasks[idx]);
-      state.task = Some(task);
-
-      let mut fut = std::pin::Pin::new_unchecked(&mut *tasks[idx]);
-      let mut cx = std::task::Context::from_waker(&waker);
-
-      if fut.as_mut().poll(&mut cx).is_ready() {
-        drop(tasks.remove(idx));
-        if tasks.is_empty() {
-          break;
-        }
-      } else {
-        idx += 1;
-      }
-    }
-
-    while !tasks.is_empty() {
-      let cqe = rio::liburing::io_uring_wait_cqe(ring, &mut res);
-      let _guard = CQESeenGuard { ring, cqe };
-
-      let p = rio::liburing::io_uring_cqe_get_data(cqe);
-      if !p.is_null() {
-        let p = p.cast::<std::cell::UnsafeCell<io::FdFutureSharedState>>();
-        let state = std::rc::Rc::from_raw(p);
-
-        let p = (*std::rc::Rc::as_ptr(&state)).get();
-        (*p).done = true;
-        (*p).res = res;
-
-        let fd = (*p).fd;
-
-        let ioc_state = &mut *ioc.get_state();
-
-        let task = ioc_state.fd_task_map.get(&fd).unwrap();
-        let taskp = *task;
-        ioc_state.fd_task_map.remove(&fd);
-
-        ioc_state.task = Some(taskp);
-
-        let is_done = {
-          let task = std::pin::Pin::new_unchecked(&mut *taskp);
-          let mut cx = std::task::Context::from_waker(&waker);
-
-          task.poll(&mut cx).is_ready()
-        };
-
-        if is_done {
-          let mut idx = 0;
-          while idx < tasks.len() {
-            let a = (std::ptr::addr_of!(*tasks[idx])
-              as *const dyn std::future::Future<Output = ()>)
-              .cast::<()>();
-
-            let b = taskp as *const ();
-            if a == b {
-              drop(tasks.remove(idx));
-              break;
-            }
-            idx += 1;
-          }
+        Err(_) => {
+          println!("Timer read failed!");
         }
       }
-    }
 
-    println!("All tasks completed running");
+      println!("Going to wait again...");
+      match timer.async_wait().await {
+        Ok(_) => {
+          println!("waited succesfully, again, for {} seconds", idx + 1);
+        }
+        Err(_) => {
+          println!("Timer read failed!");
+        }
+      }
+    }));
   }
+
+  ioc.run();
+
+  println!("All tasks completed running");
 }
