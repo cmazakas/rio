@@ -2,7 +2,8 @@
 #![allow(
   clippy::similar_names,
   clippy::missing_panics_doc,
-  clippy::cast_ptr_alignment
+  clippy::cast_ptr_alignment,
+  clippy::module_name_repetitions
 )]
 #![allow(non_camel_case_types)]
 
