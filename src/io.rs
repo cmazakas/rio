@@ -25,6 +25,14 @@ pub enum Err {
   ReadFailed,
 }
 
+impl std::fmt::Debug for Err {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::ReadFailed => f.write_str("Read did not complete successfully"),
+    }
+  }
+}
+
 impl std::future::Future for TimerFuture {
   type Output = Result<(), Err>;
 

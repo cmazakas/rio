@@ -10,7 +10,7 @@
 pub mod io;
 pub mod libc;
 pub mod liburing;
-pub mod probe;
+// pub mod probe;
 
 type Task = dyn std::future::Future<Output = ()>;
 
@@ -20,13 +20,13 @@ impl std::task::Wake for NopWaker {
   fn wake(self: std::sync::Arc<Self>) {}
 }
 
-pub struct FdFutureSharedState {
+struct FdFutureSharedState {
   pub done: bool,
   pub fd: i32,
   pub res: i32,
 }
 
-pub struct IoContextState {
+struct IoContextState {
   ring: *mut liburing::io_uring,
   task_ctx: Option<*mut dyn std::future::Future<Output = ()>>,
   tasks: Vec<Box<Task>>,
