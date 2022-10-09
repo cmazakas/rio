@@ -111,20 +111,10 @@ fn timer_multiple_concurrent_manually_polled() {
       let mut f3 = timer3.async_wait();
 
       let waker = std::sync::Arc::new(NopWaker {}).into();
-      {
-        let mut cx = std::task::Context::from_waker(&waker);
-        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }.is_pending());
-      }
-
-      {
-        let mut cx = std::task::Context::from_waker(&waker);
-        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f2).poll(&mut cx) }.is_pending());
-      }
-
-      {
-        let mut cx = std::task::Context::from_waker(&waker);
-        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f3).poll(&mut cx) }.is_pending());
-      }
+      let mut cx = std::task::Context::from_waker(&waker);
+      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }.is_pending());
+      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f2).poll(&mut cx) }.is_pending());
+      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f3).poll(&mut cx) }.is_pending());
 
       f2.await.unwrap();
       f3.await.unwrap();
@@ -138,4 +128,30 @@ fn timer_multiple_concurrent_manually_polled() {
   ioc.run();
 
   assert!(unsafe { WAS_RUN });
+}
+
+#[test]
+fn timer_multiple_tasks() {
+  const TOTAL_RUNS: i32 = 12;
+  static mut NUM_RUNS: i32 = 0;
+
+  let mut ioc = rio::IoContext::new();
+  for _idx in 0..TOTAL_RUNS {
+    ioc.post(Box::new({
+      let ioc = ioc.clone();
+      async move {
+        let mut timer = rio::io::Timer::new(ioc);
+        timer.expires_after(500);
+        timer.async_wait().await.unwrap();
+        timer.async_wait().await.unwrap();
+        unsafe {
+          NUM_RUNS += 1;
+        }
+      }
+    }));
+  }
+
+  ioc.run();
+
+  assert_eq!(unsafe { NUM_RUNS }, TOTAL_RUNS);
 }
