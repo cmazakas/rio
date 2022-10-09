@@ -95,7 +95,23 @@ pub fn timerfd_create() -> i32 {
   unsafe { rio_timerfd_create() }
 }
 
-#[must_use]
-pub unsafe fn timerfd_settime(fd: i32, millis: i32) -> i32 {
-  rio_timerfd_settime(fd, millis)
+pub enum Err {
+  EBADF,
+  EFAULT,
+  EINVAL,
+  ECANCELED,
+  UNHANDLED,
+  UNKNOWN,
+}
+
+pub unsafe fn timerfd_settime(fd: i32, millis: i32) -> Result<(), Err> {
+  match rio_timerfd_settime(fd, millis) {
+    0 => Result::Ok(()),
+    -1 => Result::Err(Err::UNKNOWN),
+    -2 => Result::Err(Err::EBADF),
+    -3 => Result::Err(Err::EFAULT),
+    -4 => Result::Err(Err::EINVAL),
+    -5 => Result::Err(Err::ECANCELED),
+    _ => Result::Err(Err::UNKNOWN),
+  }
 }

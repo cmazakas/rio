@@ -3,7 +3,8 @@
   clippy::similar_names,
   clippy::missing_panics_doc,
   clippy::cast_ptr_alignment,
-  clippy::module_name_repetitions
+  clippy::module_name_repetitions,
+  clippy::missing_errors_doc
 )]
 #![allow(non_camel_case_types)]
 

@@ -5,6 +5,7 @@
 #include <sys/timerfd.h>
 
 #include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -92,15 +93,34 @@ int rio_timerfd_settime(int fd, int millis)
     return -1;
   }
 
+  long ns = now.tv_nsec + (1000 * 1000 * (long)millis);
+
   struct itimerspec expiry;
-  expiry.it_value.tv_sec = now.tv_sec + (millis / 1000);
-  expiry.it_value.tv_nsec = now.tv_nsec + (1000 * (millis % 1000));
+  expiry.it_value.tv_sec = now.tv_sec + (ns / (1000 * 1000 * 1000));
+  expiry.it_value.tv_nsec = ns % (1000 * 1000 * 1000);
   expiry.it_interval.tv_sec = 0;
   expiry.it_interval.tv_nsec = 0;
 
   if (-1 == timerfd_settime(fd, TFD_TIMER_ABSTIME, &expiry, NULL))
   {
-    return -1;
+    int const err = errno;
+    switch (err)
+    {
+    case EBADF:
+      return -2;
+
+    case EFAULT:
+      return -3;
+
+    case EINVAL:
+      return -4;
+
+    case ECANCELED:
+      return -5;
+
+    default:
+      return -1;
+    }
   }
 
   return 0;

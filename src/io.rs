@@ -5,18 +5,21 @@ pub struct TimerFuture {
   ioc: rio::IoContext,
   state: std::rc::Rc<std::cell::UnsafeCell<rio::FdFutureSharedState>>,
   buf: std::pin::Pin<Box<u64>>,
+  millis: i32,
 }
 
 impl TimerFuture {
   fn new(
     ioc: rio::IoContext,
     state: std::rc::Rc<std::cell::UnsafeCell<rio::FdFutureSharedState>>,
+    millis: i32,
   ) -> Self {
     Self {
       initiated: false,
       state,
       ioc,
       buf: Box::pin(0_u64),
+      millis,
     }
   }
 }
@@ -53,6 +56,11 @@ impl std::future::Future for TimerFuture {
 
       return std::task::Poll::Ready(Ok(()));
     }
+
+    assert!(
+      unsafe { rio::liburing::timerfd_settime((*p).fd, self.millis) }.is_ok(),
+      "Failed to set timer on FD"
+    );
 
     let fd = unsafe { (*p).fd };
     let ioc_state = unsafe { &mut *self.ioc.get_state() };
@@ -101,21 +109,14 @@ impl Timer {
   }
 
   pub fn async_wait(&mut self) -> impl std::future::Future<Output = Result<(), Err>> + '_ {
-    unsafe {
-      assert!(
-        -1 != rio::liburing::timerfd_settime(self.fd, self.millis),
-        "Failed to set timer on FD"
-      );
+    let fd = self.fd;
 
-      let fd = self.fd;
+    let shared_statep = std::rc::Rc::new(std::cell::UnsafeCell::new(rio::FdFutureSharedState {
+      done: false,
+      fd,
+      res: -1,
+    }));
 
-      let shared_statep = std::rc::Rc::new(std::cell::UnsafeCell::new(rio::FdFutureSharedState {
-        done: false,
-        fd,
-        res: -1,
-      }));
-
-      TimerFuture::new(self.ioc.clone(), shared_statep)
-    }
+    TimerFuture::new(self.ioc.clone(), shared_statep, self.millis)
   }
 }
