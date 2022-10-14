@@ -25,6 +25,7 @@ struct FdFutureSharedState {
   pub done: bool,
   pub fd: i32,
   pub res: i32,
+  pub task: Option<*mut Task>,
 }
 
 struct IoContextState {
@@ -123,11 +124,9 @@ impl IoContext {
           (*p).res = res;
         }
 
-        let fd = unsafe { (*p).fd };
-
-        let task = state.fd_task_map.get(&fd).unwrap();
-        let taskp = *task;
-        state.fd_task_map.remove(&fd);
+        // TODO: need to handle potentially destroyed tasks here
+        //
+        let taskp = unsafe { (*p).task.take().unwrap() };
 
         state.task_ctx = Some(taskp);
 

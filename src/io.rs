@@ -1,4 +1,4 @@
-use crate as rio;
+use crate::{self as rio, Task};
 
 pub struct TimerFuture {
   initiated: bool,
@@ -64,9 +64,7 @@ impl std::future::Future for TimerFuture {
 
     let fd = unsafe { (*p).fd };
     let ioc_state = unsafe { &mut *self.ioc.get_state() };
-    ioc_state
-      .fd_task_map
-      .insert(fd, ioc_state.task_ctx.unwrap());
+    unsafe { (*p).task = Some(ioc_state.task_ctx.unwrap()) };
 
     let ring = ioc_state.ring;
     let sqe = unsafe { rio::liburing::make_sqe(ring) };
@@ -115,6 +113,7 @@ impl Timer {
       done: false,
       fd,
       res: -1,
+      task: None,
     }));
 
     TimerFuture::new(self.ioc.clone(), shared_statep, self.millis)
