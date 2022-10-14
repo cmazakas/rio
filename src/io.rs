@@ -120,3 +120,9 @@ impl Timer {
     TimerFuture::new(self.ioc.clone(), shared_statep, self.millis)
   }
 }
+
+impl Drop for Timer {
+  fn drop(&mut self) {
+    unsafe { crate::libc::close(self.fd) };
+  }
+}
