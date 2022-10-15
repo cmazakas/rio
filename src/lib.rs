@@ -8,6 +8,8 @@
 )]
 #![allow(non_camel_case_types)]
 
+use std::collections::VecDeque;
+
 pub mod io;
 pub mod libc;
 pub mod liburing;
@@ -31,8 +33,7 @@ struct FdFutureSharedState {
 struct IoContextState {
   ring: *mut liburing::io_uring,
   task_ctx: Option<*mut dyn std::future::Future<Output = ()>>,
-  tasks: Vec<Box<Task>>,
-  fd_task_map: std::collections::HashMap<i32, *mut dyn std::future::Future<Output = ()>>,
+  tasks: std::collections::VecDeque<Box<Task>>,
 }
 
 impl IoContextState {}
@@ -57,8 +58,7 @@ impl IoContext {
       p: std::rc::Rc::new(std::cell::UnsafeCell::new(IoContextState {
         ring,
         task_ctx: None,
-        tasks: Vec::default(),
-        fd_task_map: std::collections::HashMap::default(),
+        tasks: VecDeque::default(),
       })),
     }
   }
@@ -69,7 +69,7 @@ impl IoContext {
 
   pub fn post(&mut self, task: Box<Task>) {
     let state = unsafe { &mut *self.get_state() };
-    state.tasks.push(task);
+    state.tasks.push_back(task);
   }
 
   pub fn run(&mut self) {
@@ -106,52 +106,50 @@ impl IoContext {
       }
     }
 
-    let mut res = -1;
     while !state.tasks.is_empty() {
+      let mut res = -1;
       let ring = state.ring;
+
       let cqe = unsafe { liburing::io_uring_wait_cqe(ring, &mut res) };
       let _guard = CQESeenGuard { ring, cqe };
-
       let p = unsafe { liburing::io_uring_cqe_get_data(cqe) };
+      if p.is_null() {
+        continue;
+      }
 
-      if !p.is_null() {
-        let p = p.cast::<std::cell::UnsafeCell<FdFutureSharedState>>();
-        let cqe_state = unsafe { std::rc::Rc::from_raw(p) };
+      let p = p.cast::<std::cell::UnsafeCell<FdFutureSharedState>>();
+      let cqe_state = unsafe { std::rc::Rc::from_raw(p) };
 
-        let p = unsafe { (*std::rc::Rc::as_ptr(&cqe_state)).get() };
-        unsafe {
-          (*p).done = true;
-          (*p).res = res;
+      let p: *mut FdFutureSharedState = unsafe { (*std::rc::Rc::as_ptr(&cqe_state)).get() };
+      unsafe {
+        (*p).done = true;
+        (*p).res = res;
+      }
+
+      let taskp = unsafe { (*p).task.take().unwrap() };
+
+      let mut it = state.tasks.iter_mut();
+      let idx = match it.position(|p| {
+        (std::ptr::addr_of!(**p) as *const dyn std::future::Future<Output = ()>).cast::<()>()
+          == taskp.cast::<()>()
+      }) {
+        Some(idx) => idx,
+        None => {
+          continue;
         }
+      };
 
-        // TODO: need to handle potentially destroyed tasks here
-        //
-        let taskp = unsafe { (*p).task.take().unwrap() };
+      state.task_ctx = Some(taskp);
 
-        state.task_ctx = Some(taskp);
+      let is_done = {
+        let task = unsafe { std::pin::Pin::new_unchecked(&mut *taskp) };
+        let mut cx = std::task::Context::from_waker(&waker);
 
-        let is_done = {
-          let task = unsafe { std::pin::Pin::new_unchecked(&mut *taskp) };
-          let mut cx = std::task::Context::from_waker(&waker);
+        task.poll(&mut cx).is_ready()
+      };
 
-          task.poll(&mut cx).is_ready()
-        };
-
-        if is_done {
-          let mut idx = 0;
-          while idx < state.tasks.len() {
-            let a = (std::ptr::addr_of!(*state.tasks[idx])
-              as *const dyn std::future::Future<Output = ()>)
-              .cast::<()>();
-
-            let b = taskp as *const ();
-            if a == b {
-              drop(state.tasks.remove(idx));
-              break;
-            }
-            idx += 1;
-          }
-        }
+      if is_done {
+        drop(state.tasks.remove(idx));
       }
     }
   }

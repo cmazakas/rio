@@ -1,4 +1,4 @@
-use crate::{self as rio, Task};
+use crate::{self as rio};
 
 pub struct TimerFuture {
   initiated: bool,
@@ -122,6 +122,6 @@ impl Timer {
 
 impl Drop for Timer {
   fn drop(&mut self) {
-    unsafe { crate::libc::close(self.fd) };
+    unsafe { rio::libc::close(self.fd) };
   }
 }
