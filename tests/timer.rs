@@ -269,24 +269,63 @@ fn drop_timer_finish_early() {
       }
     }));
 
-    for _idx in 0..2 {
-      ioc.post(Box::new({
-        let ioc = ioc.clone();
-        async move {
-          let timeout = 250;
+    ioc.post(Box::new({
+      let ioc = ioc.clone();
+      async move {
+        let timeout = 250;
 
-          let mut timer = rio::io::Timer::new(ioc.clone());
-          timer.expires_after(timeout);
-          timer.async_wait().await.unwrap();
+        let mut timer = rio::io::Timer::new(ioc.clone());
+        timer.expires_after(timeout);
+        timer.async_wait().await.unwrap();
 
-          unsafe {
-            NUM_RUNS += 1;
-          }
+        unsafe {
+          NUM_RUNS += 1;
         }
-      }));
-    }
+      }
+    }));
 
     ioc.run();
-    assert_eq!(unsafe { NUM_RUNS }, 3);
+    assert_eq!(unsafe { NUM_RUNS }, 2);
   }
+}
+
+#[test]
+fn double_wait() {
+  /**
+   * Want to test that our time structure is stable when we poll a future, drop
+   * it and then start up another async read on the timer's fd
+   */
+  struct NopWaker {}
+  impl std::task::Wake for NopWaker {
+    fn wake(self: std::sync::Arc<Self>) {}
+  }
+
+  static mut WAS_RUN: bool = false;
+  let mut ioc = rio::IoContext::new();
+  ioc.post(Box::new({
+    let ioc = ioc.clone();
+    async move {
+      let mut timer = rio::io::Timer::new(ioc.clone());
+      let timeout = 1000;
+      timer.expires_after(timeout);
+
+      let mut f = timer.async_wait();
+
+      let waker = std::sync::Arc::new(NopWaker {}).into();
+      let mut cx = std::task::Context::from_waker(&waker);
+
+      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }.is_pending());
+
+      std::mem::drop(f);
+      timer.async_wait().await.unwrap();
+
+      unsafe {
+        WAS_RUN = true;
+      }
+    }
+  }));
+
+  ioc.run();
+
+  assert!(unsafe { WAS_RUN });
 }
