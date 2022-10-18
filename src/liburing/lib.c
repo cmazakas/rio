@@ -52,6 +52,13 @@ void rio_io_uring_prep_read(struct io_uring_sqe *sqe,
   return io_uring_prep_read(sqe, fd, buf, nbytes, offset);
 }
 
+void rio_io_uring_prep_cancel(struct io_uring_sqe *sqe,
+                              void *user_data,
+                              int flags)
+{
+  io_uring_prep_cancel(sqe, user_data, flags);
+}
+
 int rio_io_uring_submit(struct io_uring *ring)
 {
   return io_uring_submit(ring);
@@ -85,7 +92,7 @@ int rio_timerfd_create()
   return fd;
 }
 
-int rio_timerfd_settime(int fd, int millis)
+int rio_timerfd_settime(int fd, unsigned long secs, unsigned long nanos)
 {
   struct timespec now;
   if (-1 == clock_gettime(CLOCK_REALTIME, &now))
@@ -93,7 +100,7 @@ int rio_timerfd_settime(int fd, int millis)
     return -1;
   }
 
-  long ns = now.tv_nsec + (1000 * 1000 * (long)millis);
+  long ns = now.tv_nsec + (1000 * 1000 * 1000) * secs + nanos;
 
   struct itimerspec expiry;
   expiry.it_value.tv_sec = now.tv_sec + (ns / (1000 * 1000 * 1000));
@@ -101,7 +108,7 @@ int rio_timerfd_settime(int fd, int millis)
   expiry.it_interval.tv_sec = 0;
   expiry.it_interval.tv_nsec = 0;
 
-  if (-1 == timerfd_settime(fd, TFD_TIMER_ABSTIME, &expiry, NULL))
+  if (-1 == timerfd_settime(fd, TFD_TIMER_ABSTIME | TFD_TIMER_CANCEL_ON_SET, &expiry, NULL))
   {
     int const err = errno;
     switch (err)

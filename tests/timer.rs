@@ -11,7 +11,7 @@ fn verify_duration() {
     async move {
       let mut timer = rio::io::Timer::new(ioc);
 
-      let timeout = 500;
+      let timeout = std::time::Duration::from_millis(500);
       timer.expires_after(timeout);
 
       let t1 = std::time::Instant::now();
@@ -19,14 +19,10 @@ fn verify_duration() {
       let t2 = std::time::Instant::now();
 
       let dur = t2.duration_since(t1);
-      assert!(
-        (dur.as_millis() >= timeout as u128) && (dur.as_millis() < (timeout as u128 + 50)),
-        "{} >= {}",
-        dur.as_millis(),
-        timeout as u128
-      );
+      assert!(dur >= timeout);
+      assert!(dur < timeout + std::time::Duration::from_millis(25));
 
-      let timeout = 1500;
+      let timeout = std::time::Duration::from_millis(1500);
       timer.expires_after(timeout);
 
       let t1 = std::time::Instant::now();
@@ -34,61 +30,14 @@ fn verify_duration() {
       let t2 = std::time::Instant::now();
 
       let dur = t2.duration_since(t1);
-      assert!(
-        (dur.as_millis() >= timeout as u128) && (dur.as_millis() < (timeout as u128 + 50)),
-        "{} >= {}",
-        dur.as_millis(),
-        timeout as u128
-      );
+      assert!(dur >= timeout);
+      assert!(dur < timeout + std::time::Duration::from_millis(25));
 
       unsafe {
         WAS_RUN = true;
       }
     }
   }));
-  ioc.run();
-
-  assert!(unsafe { WAS_RUN });
-}
-
-#[test]
-fn forget_future_initiated() {
-  /**
-   * Test that forget()'ing an initiated future for the timer is harmless.
-   */
-  struct NopWaker {}
-  impl std::task::Wake for NopWaker {
-    fn wake(self: std::sync::Arc<Self>) {}
-  }
-
-  static mut WAS_RUN: bool = false;
-  let mut ioc = rio::IoContext::new();
-  ioc.post(Box::new({
-    let ioc = ioc.clone();
-    async move {
-      let mut timer = rio::io::Timer::new(ioc.clone());
-      let timeout = 10;
-      timer.expires_after(timeout);
-
-      let mut f = timer.async_wait();
-
-      let waker = std::sync::Arc::new(NopWaker {}).into();
-      let mut cx = std::task::Context::from_waker(&waker);
-
-      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }.is_pending());
-      std::mem::forget(f);
-
-      let mut timer = rio::io::Timer::new(ioc.clone());
-      let timeout = 20;
-      timer.expires_after(timeout);
-      timer.async_wait().await.unwrap();
-
-      unsafe {
-        WAS_RUN = true;
-      }
-    }
-  }));
-
   ioc.run();
 
   assert!(unsafe { WAS_RUN });
@@ -111,7 +60,7 @@ fn drop_future_initiated() {
     let ioc = ioc.clone();
     async move {
       let mut timer = rio::io::Timer::new(ioc.clone());
-      let timeout = 10;
+      let timeout = std::time::Duration::from_millis(10);
       timer.expires_after(timeout);
 
       let mut f = timer.async_wait();
@@ -122,55 +71,10 @@ fn drop_future_initiated() {
       assert!(unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }.is_pending());
       std::mem::drop(f);
 
-      let mut timer = rio::io::Timer::new(ioc.clone());
-      let timeout = 20;
-      timer.expires_after(timeout);
-      timer.async_wait().await.unwrap();
-
-      unsafe {
-        WAS_RUN = true;
-      }
-    }
-  }));
-
-  ioc.run();
-
-  assert!(unsafe { WAS_RUN });
-}
-
-#[test]
-fn forget_timer_initiated() {
-  /**
-   * Test that forget() is harmless when the associated future is initiated and
-   * then forgotten.
-   */
-  struct NopWaker {}
-  impl std::task::Wake for NopWaker {
-    fn wake(self: std::sync::Arc<Self>) {}
-  }
-
-  static mut WAS_RUN: bool = false;
-  let mut ioc = rio::IoContext::new();
-  ioc.post(Box::new({
-    let ioc = ioc.clone();
-    async move {
-      let mut timer = rio::io::Timer::new(ioc.clone());
-      let timeout = 10;
-      timer.expires_after(timeout);
-
-      let mut f = timer.async_wait();
-
-      let waker = std::sync::Arc::new(NopWaker {}).into();
-      let mut cx = std::task::Context::from_waker(&waker);
-
-      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }.is_pending());
-      std::mem::forget(f);
-      std::mem::forget(timer);
-
-      let mut timer = rio::io::Timer::new(ioc.clone());
-      let timeout = 20;
-      timer.expires_after(timeout);
-      timer.async_wait().await.unwrap();
+      let mut timer2 = rio::io::Timer::new(ioc.clone());
+      let timeout = std::time::Duration::from_millis(20);
+      timer2.expires_after(timeout);
+      timer2.async_wait().await.unwrap();
 
       unsafe {
         WAS_RUN = true;
@@ -203,7 +107,7 @@ fn drop_timer_initiated() {
     let ioc = ioc.clone();
     async move {
       let mut timer = rio::io::Timer::new(ioc.clone());
-      let timeout = 10;
+      let timeout = std::time::Duration::from_millis(10);
       timer.expires_after(timeout);
 
       let mut f = timer.async_wait();
@@ -220,7 +124,7 @@ fn drop_timer_initiated() {
       std::mem::drop(timer);
 
       let mut timer2 = rio::io::Timer::new(ioc.clone());
-      let timeout = 20;
+      let timeout = std::time::Duration::from_millis(20);
       timer2.expires_after(timeout);
       timer2.async_wait().await.unwrap();
 
@@ -253,7 +157,7 @@ fn drop_timer_finish_early() {
       let ioc = ioc.clone();
       async move {
         let mut timer = rio::io::Timer::new(ioc.clone());
-        let timeout = 100;
+        let timeout = std::time::Duration::from_millis(100);
         timer.expires_after(timeout);
 
         let mut f = timer.async_wait();
@@ -272,7 +176,7 @@ fn drop_timer_finish_early() {
     ioc.post(Box::new({
       let ioc = ioc.clone();
       async move {
-        let timeout = 250;
+        let timeout = std::time::Duration::from_millis(250);
 
         let mut timer = rio::io::Timer::new(ioc.clone());
         timer.expires_after(timeout);
@@ -306,7 +210,7 @@ fn double_wait() {
     let ioc = ioc.clone();
     async move {
       let mut timer = rio::io::Timer::new(ioc.clone());
-      let timeout = 1000;
+      let timeout = std::time::Duration::from_secs(1);
       timer.expires_after(timeout);
 
       let mut f = timer.async_wait();
@@ -317,7 +221,15 @@ fn double_wait() {
       assert!(unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }.is_pending());
 
       std::mem::drop(f);
+
+      let t1 = std::time::Instant::now();
       timer.async_wait().await.unwrap();
+      let t2 = std::time::Instant::now();
+
+      let dur = t2.duration_since(t1);
+
+      assert!(dur >= timeout);
+      assert!(dur < timeout + std::time::Duration::from_millis(10));
 
       unsafe {
         WAS_RUN = true;

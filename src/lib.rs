@@ -28,6 +28,7 @@ struct FdFutureSharedState {
   pub fd: i32,
   pub res: i32,
   pub task: Option<*mut Task>,
+  pub sqe: *mut liburing::io_uring_sqe,
 }
 
 struct IoContextState {

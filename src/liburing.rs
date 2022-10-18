@@ -34,11 +34,12 @@ extern "C" {
     nbytes: u32,
     offset: i64,
   );
+  fn rio_io_uring_prep_cancel(sqe: *mut io_uring_sqe, user_data: *mut libc::c_void, flags: i32);
   fn rio_io_uring_wait_cqe(ring: *mut io_uring, res: &mut i32) -> *mut io_uring_cqe;
   fn rio_io_uring_cqe_seen(ring: *mut io_uring, cqe: *mut io_uring_cqe);
 
   fn rio_timerfd_create() -> i32;
-  fn rio_timerfd_settime(fd: i32, millis: i32) -> i32;
+  fn rio_timerfd_settime(fd: i32, secs: u64, nanos: u64) -> i32;
   fn rio_io_uring_cqe_get_data(cqe: *const io_uring_cqe) -> *mut libc::c_void;
 }
 
@@ -73,6 +74,14 @@ pub unsafe fn io_uring_prep_read(
   rio_io_uring_prep_read(sqe, fd, buf, nbytes, offset);
 }
 
+pub unsafe fn io_uring_prep_cancel(
+  sqe: *mut io_uring_sqe,
+  user_data: *mut libc::c_void,
+  flags: i32,
+) {
+  rio_io_uring_prep_cancel(sqe, user_data, flags);
+}
+
 pub unsafe fn io_uring_submit(ring: *mut io_uring) -> i32 {
   rio_io_uring_submit(ring)
 }
@@ -104,8 +113,8 @@ pub enum Err {
   UNKNOWN,
 }
 
-pub unsafe fn timerfd_settime(fd: i32, millis: i32) -> Result<(), Err> {
-  match rio_timerfd_settime(fd, millis) {
+pub unsafe fn timerfd_settime(fd: i32, secs: u64, nanos: u64) -> Result<(), Err> {
+  match rio_timerfd_settime(fd, secs, nanos) {
     0 => Result::Ok(()),
     -1 => Result::Err(Err::UNKNOWN),
     -2 => Result::Err(Err::EBADF),

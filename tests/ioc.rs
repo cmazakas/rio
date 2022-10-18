@@ -24,7 +24,7 @@ fn timer() {
     let ioc = ioc.clone();
     async move {
       let mut timer = rio::io::Timer::new(ioc);
-      timer.expires_after(500);
+      timer.expires_after(std::time::Duration::from_millis(500));
       timer.async_wait().await.unwrap();
       unsafe {
         WAS_RUN = true;
@@ -46,7 +46,7 @@ fn timer_consecutive() {
       // make sure we can wait twice in a row
       //
       let mut timer = rio::io::Timer::new(ioc);
-      timer.expires_after(500);
+      timer.expires_after(std::time::Duration::from_millis(500));
       timer.async_wait().await.unwrap();
       timer.async_wait().await.unwrap();
       unsafe {
@@ -70,8 +70,8 @@ fn timer_multiple_concurrent() {
       //
       let mut timer1 = rio::io::Timer::new(ioc.clone());
       let mut timer2 = rio::io::Timer::new(ioc.clone());
-      timer1.expires_after(500);
-      timer2.expires_after(750);
+      timer1.expires_after(std::time::Duration::from_millis(500));
+      timer2.expires_after(std::time::Duration::from_millis(750));
       timer2.async_wait().await.unwrap();
       timer1.async_wait().await.unwrap();
       unsafe {
@@ -102,9 +102,9 @@ fn timer_multiple_concurrent_manually_polled() {
       let mut timer2 = rio::io::Timer::new(ioc.clone());
       let mut timer3 = rio::io::Timer::new(ioc.clone());
 
-      timer1.expires_after(1000);
-      timer2.expires_after(2000);
-      timer3.expires_after(4000);
+      timer1.expires_after(std::time::Duration::from_millis(1000));
+      timer2.expires_after(std::time::Duration::from_millis(2000));
+      timer3.expires_after(std::time::Duration::from_millis(4000));
 
       let mut f1 = timer1.async_wait();
       let mut f2 = timer2.async_wait();
@@ -141,7 +141,7 @@ fn timer_multiple_tasks() {
       let ioc = ioc.clone();
       async move {
         let mut timer = rio::io::Timer::new(ioc);
-        timer.expires_after(500);
+        timer.expires_after(std::time::Duration::from_millis(500));
         timer.async_wait().await.unwrap();
         timer.async_wait().await.unwrap();
         unsafe {

@@ -12,7 +12,7 @@ pub fn main() {
 
       let mut timer = rio::io::Timer::new(io);
       let time = (idx + 1) * 1000;
-      timer.expires_after(time);
+      timer.expires_after(std::time::Duration::from_millis(time));
 
       println!("Suspending now...");
       match timer.async_wait().await {
