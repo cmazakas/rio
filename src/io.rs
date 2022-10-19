@@ -91,10 +91,10 @@ impl std::future::Future for TimerFuture {
     let sqe = unsafe { rio::liburing::make_sqe(ring) };
     let buf = std::ptr::addr_of_mut!(*self.buf).cast::<rio::libc::c_void>();
 
-    let sqe_datap = std::rc::Rc::into_raw(self.state.clone()).cast::<rio::libc::c_void>();
+    let user_data = std::rc::Rc::into_raw(self.state.clone()).cast::<rio::libc::c_void>();
 
     unsafe {
-      rio::liburing::io_uring_sqe_set_data(sqe, sqe_datap as *mut rio::libc::c_void);
+      rio::liburing::io_uring_sqe_set_data(sqe, user_data as *mut rio::libc::c_void);
     }
 
     unsafe { rio::liburing::io_uring_prep_read(sqe, fd, buf, 8, 0) };
