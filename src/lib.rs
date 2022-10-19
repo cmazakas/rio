@@ -28,7 +28,6 @@ struct FdFutureSharedState {
   pub fd: i32,
   pub res: i32,
   pub task: Option<*mut Task>,
-  pub sqe: *mut liburing::io_uring_sqe,
 }
 
 struct IoContextState {
@@ -112,6 +111,7 @@ impl IoContext {
       let ring = state.ring;
 
       let cqe = unsafe { liburing::io_uring_wait_cqe(ring, &mut res) };
+      println!("res is: {res}");
       let _guard = CQESeenGuard { ring, cqe };
       let p = unsafe { liburing::io_uring_cqe_get_data(cqe) };
       if p.is_null() {

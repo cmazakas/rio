@@ -27,9 +27,11 @@ impl TimerFuture {
 impl Drop for TimerFuture {
   fn drop(&mut self) {
     let p = unsafe { (*std::rc::Rc::as_ptr(&self.state)).get() };
-    if self.initiated && unsafe { !(*p).done && !(*p).sqe.is_null() } {
+    if self.initiated && unsafe { !(*p).done } {
       unsafe {
-        rio::liburing::io_uring_prep_cancel((*p).sqe, p.cast::<libc::c_void>(), 0);
+        let ring = (*self.ioc.get_state()).ring;
+        let sqe = rio::liburing::make_sqe(ring);
+        rio::liburing::io_uring_prep_cancel(sqe, p.cast::<libc::c_void>(), 0);
         rio::liburing::io_uring_submit((*self.ioc.get_state()).ring);
       }
     }
@@ -87,7 +89,6 @@ impl std::future::Future for TimerFuture {
 
     let ring = ioc_state.ring;
     let sqe = unsafe { rio::liburing::make_sqe(ring) };
-    unsafe { (*p).sqe = sqe };
     let buf = std::ptr::addr_of_mut!(*self.buf).cast::<rio::libc::c_void>();
 
     let sqe_datap = std::rc::Rc::into_raw(self.state.clone()).cast::<rio::libc::c_void>();
@@ -135,7 +136,6 @@ impl Timer {
       fd,
       res: -1,
       task: None,
-      sqe: std::ptr::null_mut(),
     }));
 
     TimerFuture::new(self.ioc.clone(), shared_statep, self.dur)
