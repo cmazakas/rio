@@ -108,7 +108,7 @@ int rio_timerfd_settime(int fd, unsigned long secs, unsigned long nanos)
   expiry.it_interval.tv_sec = 0;
   expiry.it_interval.tv_nsec = 0;
 
-  if (-1 == timerfd_settime(fd, TFD_TIMER_ABSTIME | TFD_TIMER_CANCEL_ON_SET, &expiry, NULL))
+  if (-1 == timerfd_settime(fd, TFD_TIMER_ABSTIME, &expiry, NULL))
   {
     int const err = errno;
     switch (err)
