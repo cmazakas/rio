@@ -14,7 +14,7 @@ fn forget_future_initiated() {
 
   static mut WAS_RUN: bool = false;
   let mut ioc = rio::IoContext::new();
-  ioc.post(Box::new({
+  ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
       let mut timer = rio::io::Timer::new(ex.clone());
@@ -58,7 +58,7 @@ fn forget_timer_initiated() {
 
   static mut WAS_RUN: bool = false;
   let mut ioc = rio::IoContext::new();
-  ioc.post(Box::new({
+  ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
       let mut timer = rio::io::Timer::new(ex.clone());

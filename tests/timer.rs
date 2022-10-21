@@ -6,7 +6,7 @@ extern crate rio;
 fn eager_future() {
   static mut WAS_RUN: bool = false;
   let mut ioc = rio::IoContext::new();
-  ioc.post(Box::new(async {
+  ioc.post(Box::pin(async {
     unsafe {
       WAS_RUN = true;
     }
@@ -20,7 +20,7 @@ fn eager_future() {
 fn timer() {
   static mut WAS_RUN: bool = false;
   let mut ioc = rio::IoContext::new();
-  ioc.post(Box::new({
+  ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
       let mut timer = rio::io::Timer::new(ex);
@@ -40,7 +40,7 @@ fn timer() {
 fn timer_consecutive() {
   static mut WAS_RUN: bool = false;
   let mut ioc = rio::IoContext::new();
-  ioc.post(Box::new({
+  ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
       // make sure we can wait twice in a row
@@ -63,7 +63,7 @@ fn timer_consecutive() {
 fn timer_multiple_concurrent() {
   static mut WAS_RUN: bool = false;
   let mut ioc = rio::IoContext::new();
-  ioc.post(Box::new({
+  ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
       // make sure we can wait twice in a row
@@ -95,7 +95,7 @@ fn timer_multiple_concurrent_manually_polled() {
   //
   static mut WAS_RUN: bool = false;
   let mut ioc = rio::IoContext::new();
-  ioc.post(Box::new({
+  ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
       let mut timer1 = rio::io::Timer::new(ex.clone());
@@ -137,7 +137,7 @@ fn timer_multiple_tasks() {
 
   let mut ioc = rio::IoContext::new();
   for _idx in 0..TOTAL_RUNS {
-    ioc.post(Box::new({
+    ioc.post(Box::pin({
       let ex = ioc.get_executor();
       async move {
         let mut timer = rio::io::Timer::new(ex);
@@ -160,7 +160,7 @@ fn timer_multiple_tasks() {
 fn verify_duration() {
   static mut WAS_RUN: bool = false;
   let mut ioc = rio::IoContext::new();
-  ioc.post(Box::new({
+  ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
       let mut timer = rio::io::Timer::new(ex);
@@ -210,7 +210,7 @@ fn drop_future_initiated() {
 
   static mut WAS_RUN: bool = false;
   let mut ioc = rio::IoContext::new();
-  ioc.post(Box::new({
+  ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
       let mut timer = rio::io::Timer::new(ex.clone());
@@ -257,7 +257,7 @@ fn drop_timer_initiated() {
 
   static mut WAS_RUN: bool = false;
   let mut ioc = rio::IoContext::new();
-  ioc.post(Box::new({
+  ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
       let mut timer = rio::io::Timer::new(ex.clone());
@@ -307,7 +307,7 @@ fn drop_timer_finish_early() {
   {
     static mut NUM_RUNS: i32 = 0;
     let mut ioc = rio::IoContext::new();
-    ioc.post(Box::new({
+    ioc.post(Box::pin({
       let ex = ioc.get_executor();
       async move {
         let mut timer = rio::io::Timer::new(ex.clone());
@@ -327,7 +327,7 @@ fn drop_timer_finish_early() {
       }
     }));
 
-    ioc.post(Box::new({
+    ioc.post(Box::pin({
       let ex = ioc.get_executor();
       async move {
         let timeout = std::time::Duration::from_millis(250);
@@ -360,7 +360,7 @@ fn double_wait() {
 
   static mut WAS_RUN: bool = false;
   let mut ioc = rio::IoContext::new();
-  ioc.post(Box::new({
+  ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
       let mut timer = rio::io::Timer::new(ex.clone());

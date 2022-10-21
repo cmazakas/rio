@@ -7,7 +7,7 @@ pub fn main() {
 
   for idx in 0..5 {
     let ex = ioc.get_executor();
-    ioc.post(Box::new(async move {
+    ioc.post(Box::pin(async move {
       println!("Starting the timer coro...");
 
       let mut timer = rio::io::Timer::new(ex);

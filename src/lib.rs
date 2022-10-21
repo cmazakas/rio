@@ -29,7 +29,7 @@ struct FdFutureSharedState {
 struct IoContextState {
   ring: *mut liburing::io_uring,
   task_ctx: Option<*mut dyn std::future::Future<Output = ()>>,
-  tasks: std::collections::VecDeque<Box<Task>>,
+  tasks: std::collections::VecDeque<std::pin::Pin<Box<Task>>>,
 }
 
 pub struct IoContext {
@@ -71,7 +71,7 @@ impl IoContext {
     (*std::rc::Rc::as_ptr(&self.p)).get()
   }
 
-  pub fn post(&mut self, task: Box<Task>) {
+  pub fn post(&mut self, task: std::pin::Pin<Box<Task>>) {
     let state = unsafe { &mut *self.get_state() };
     state.tasks.push_back(task);
   }
@@ -99,10 +99,12 @@ impl IoContext {
 
     let mut idx = 0;
     while idx < state.tasks.len() {
-      let task: *mut _ = std::ptr::addr_of_mut!(*state.tasks[idx]);
-      state.task_ctx = Some(task);
+      state.task_ctx = {
+        let task: *mut _ = unsafe { state.tasks[idx].as_mut().get_unchecked_mut() };
+        Some(task)
+      };
 
-      let mut fut = unsafe { std::pin::Pin::new_unchecked(&mut *state.tasks[idx]) };
+      let mut fut = state.tasks[idx].as_mut();
       let mut cx = std::task::Context::from_waker(&waker);
 
       if fut.as_mut().poll(&mut cx).is_ready() {
