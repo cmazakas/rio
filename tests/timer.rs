@@ -395,3 +395,31 @@ fn double_wait() {
 
   assert!(unsafe { WAS_RUN });
 }
+
+#[test]
+fn nested_ioc() {
+  /***
+   * Test that we can nest IoContexts
+   */
+
+  static mut WAS_RUN: bool = false;
+
+  let mut ioc = rio::IoContext::new();
+  ioc.post(Box::pin(async {
+    let mut ioc2 = rio::IoContext::new();
+    let ex2 = ioc2.get_executor();
+    ioc2.post(Box::pin(async move {
+      let mut timer = rio::io::Timer::new(ex2);
+      timer.expires_after(std::time::Duration::from_millis(100));
+      timer.async_wait().await.unwrap();
+    }));
+    ioc2.run();
+
+    unsafe {
+      WAS_RUN = true;
+    }
+  }));
+
+  ioc.run();
+  assert!(unsafe { WAS_RUN });
+}
