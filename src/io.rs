@@ -2,7 +2,7 @@ use crate::{self as rio, libc};
 
 pub struct TimerFuture {
   initiated: bool,
-  ioc: rio::IoContext,
+  ex: rio::Executor,
   state: std::rc::Rc<std::cell::UnsafeCell<rio::FdFutureSharedState>>,
   buf: std::pin::Pin<Box<u64>>,
   dur: std::time::Duration,
@@ -10,14 +10,14 @@ pub struct TimerFuture {
 
 impl TimerFuture {
   fn new(
-    ioc: rio::IoContext,
+    ex: rio::Executor,
     state: std::rc::Rc<std::cell::UnsafeCell<rio::FdFutureSharedState>>,
     dur: std::time::Duration,
   ) -> Self {
     Self {
       initiated: false,
       state,
-      ioc,
+      ex,
       buf: Box::pin(0_u64),
       dur,
     }
@@ -29,10 +29,10 @@ impl Drop for TimerFuture {
     let p = unsafe { (*std::rc::Rc::as_ptr(&self.state)).get() };
     if self.initiated && unsafe { !(*p).done } {
       unsafe {
-        let ring = (*self.ioc.get_state()).ring;
+        let ring = (*self.ex.get_state()).ring;
         let sqe = rio::liburing::make_sqe(ring);
         rio::liburing::io_uring_prep_cancel(sqe, p.cast::<libc::c_void>(), 0);
-        rio::liburing::io_uring_submit((*self.ioc.get_state()).ring);
+        rio::liburing::io_uring_submit((*self.ex.get_state()).ring);
       }
     }
   }
@@ -84,7 +84,7 @@ impl std::future::Future for TimerFuture {
     );
 
     let fd = unsafe { (*p).fd };
-    let ioc_state = unsafe { &mut *self.ioc.get_state() };
+    let ioc_state = unsafe { &mut *self.ex.get_state() };
     unsafe { (*p).task = Some(ioc_state.task_ctx.unwrap()) };
 
     let ring = ioc_state.ring;
@@ -108,19 +108,19 @@ impl std::future::Future for TimerFuture {
 pub struct Timer {
   fd: i32,
   dur: std::time::Duration,
-  ioc: rio::IoContext,
+  ex: rio::Executor,
 }
 
 impl Timer {
   #[must_use]
-  pub fn new(ioc: rio::IoContext) -> Self {
+  pub fn new(ex: rio::Executor) -> Self {
     let fd = rio::liburing::timerfd_create();
     assert!(fd != -1, "Can't create a timer");
 
     Self {
       fd,
       dur: std::time::Duration::default(),
-      ioc,
+      ex,
     }
   }
 
@@ -138,7 +138,7 @@ impl Timer {
       task: None,
     }));
 
-    TimerFuture::new(self.ioc.clone(), shared_statep, self.dur)
+    TimerFuture::new(self.ex.clone(), shared_statep, self.dur)
   }
 }
 

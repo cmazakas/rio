@@ -19,10 +19,6 @@ type Task = dyn std::future::Future<Output = ()>;
 
 struct NopWaker {}
 
-impl std::task::Wake for NopWaker {
-  fn wake(self: std::sync::Arc<Self>) {}
-}
-
 struct FdFutureSharedState {
   pub done: bool,
   pub fd: i32,
@@ -36,17 +32,25 @@ struct IoContextState {
   tasks: std::collections::VecDeque<Box<Task>>,
 }
 
+pub struct IoContext {
+  p: std::rc::Rc<std::cell::UnsafeCell<IoContextState>>,
+}
+
+#[derive(Clone)]
+pub struct Executor {
+  p: std::rc::Rc<std::cell::UnsafeCell<IoContextState>>,
+}
+
+impl std::task::Wake for NopWaker {
+  fn wake(self: std::sync::Arc<Self>) {}
+}
+
 impl IoContextState {}
 
 impl Drop for IoContextState {
   fn drop(&mut self) {
     unsafe { liburing::teardown(self.ring) }
   }
-}
-
-#[derive(Clone)]
-pub struct IoContext {
-  p: std::rc::Rc<std::cell::UnsafeCell<IoContextState>>,
 }
 
 impl IoContext {
@@ -70,6 +74,11 @@ impl IoContext {
   pub fn post(&mut self, task: Box<Task>) {
     let state = unsafe { &mut *self.get_state() };
     state.tasks.push_back(task);
+  }
+
+  #[must_use]
+  pub fn get_executor(&self) -> Executor {
+    Executor { p: self.p.clone() }
   }
 
   pub fn run(&mut self) {
@@ -160,4 +169,15 @@ impl std::default::Default for IoContext {
   fn default() -> Self {
     Self::new()
   }
+}
+
+impl Executor {
+  unsafe fn get_state(&self) -> *mut IoContextState {
+    (*std::rc::Rc::as_ptr(&self.p)).get()
+  }
+
+  // pub fn post(&mut self, task: Box<Task>) {
+  //   let state = unsafe { &mut *self.get_state() };
+  //   state.tasks.push_back(task);
+  // }
 }

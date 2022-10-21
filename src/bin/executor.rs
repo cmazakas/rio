@@ -6,11 +6,11 @@ pub fn main() {
   let mut ioc = rio::IoContext::new();
 
   for idx in 0..5 {
-    let io = ioc.clone();
+    let ex = ioc.get_executor();
     ioc.post(Box::new(async move {
       println!("Starting the timer coro...");
 
-      let mut timer = rio::io::Timer::new(io);
+      let mut timer = rio::io::Timer::new(ex);
       let time = (idx + 1) * 1000;
       timer.expires_after(std::time::Duration::from_millis(time));
 
