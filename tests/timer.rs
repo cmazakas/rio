@@ -72,7 +72,10 @@ fn timer_multiple_concurrent() {
       let mut timer2 = rio::io::Timer::new(ex.clone());
       timer1.expires_after(std::time::Duration::from_millis(500));
       timer2.expires_after(std::time::Duration::from_millis(750));
+      let t = std::time::Instant::now();
       timer2.async_wait().await.unwrap();
+
+      assert!(std::time::Instant::now().duration_since(t).as_millis() >= 750);
       timer1.async_wait().await.unwrap();
       unsafe {
         WAS_RUN = true;
@@ -398,10 +401,6 @@ fn double_wait() {
 
 #[test]
 fn nested_ioc() {
-  /***
-   * Test that we can nest IoContexts
-   */
-
   static mut WAS_RUN: bool = false;
 
   let mut ioc = rio::IoContext::new();
@@ -419,6 +418,71 @@ fn nested_ioc() {
       WAS_RUN = true;
     }
   }));
+
+  ioc.run();
+  assert!(unsafe { WAS_RUN });
+}
+
+#[test]
+fn nested_future() {
+  static mut WAS_RUN: bool = false;
+
+  let mut ioc = rio::IoContext::new();
+  ioc.post({
+    let ex = ioc.get_executor();
+    Box::pin(async {
+      let nested = async {
+        let mut timer = rio::io::Timer::new(ex);
+        let dur = std::time::Duration::from_millis(500);
+        let t = std::time::Instant::now();
+        timer.expires_after(dur);
+        timer.async_wait().await.unwrap();
+        assert!(std::time::Instant::now().duration_since(t).as_millis() >= 500);
+        unsafe { WAS_RUN = true };
+      };
+
+      nested.await;
+    })
+  });
+
+  ioc.run();
+  assert!(unsafe { WAS_RUN });
+}
+
+#[test]
+fn executor_post_ioc_running() {
+  static mut WAS_RUN: bool = false;
+
+  let mut ioc = rio::IoContext::new();
+  ioc.post({
+    let mut ex = ioc.get_executor();
+    Box::pin(async move {
+      ex.post({
+        let ex = ex.clone();
+        Box::pin(async move {
+          let mut timer = rio::io::Timer::new(ex);
+          let dur = std::time::Duration::from_millis(500);
+          let t = std::time::Instant::now();
+          timer.expires_after(dur);
+
+          timer.async_wait().await.unwrap();
+          timer.async_wait().await.unwrap();
+
+          assert!(std::time::Instant::now().duration_since(t).as_millis() >= 2 * 500);
+
+          unsafe { WAS_RUN = true };
+        })
+      });
+
+      let mut timer = rio::io::Timer::new(ex);
+      let dur = std::time::Duration::from_millis(500);
+      let t = std::time::Instant::now();
+      timer.expires_after(dur);
+      timer.async_wait().await.unwrap();
+
+      assert!(std::time::Instant::now().duration_since(t).as_millis() >= 500);
+    })
+  });
 
   ioc.run();
   assert!(unsafe { WAS_RUN });

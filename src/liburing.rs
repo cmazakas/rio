@@ -35,6 +35,7 @@ extern "C" {
     offset: i64,
   );
   fn rio_io_uring_prep_cancel(sqe: *mut io_uring_sqe, user_data: *mut libc::c_void, flags: i32);
+  fn rio_io_uring_prep_nop(sqe: *mut io_uring_sqe);
   fn rio_io_uring_wait_cqe(ring: *mut io_uring, res: &mut i32) -> *mut io_uring_cqe;
   fn rio_io_uring_cqe_seen(ring: *mut io_uring, cqe: *mut io_uring_cqe);
 
@@ -80,6 +81,10 @@ pub unsafe fn io_uring_prep_cancel(
   flags: i32,
 ) {
   rio_io_uring_prep_cancel(sqe, user_data, flags);
+}
+
+pub unsafe fn io_uring_prep_nop(sqe: *mut io_uring_sqe) {
+  rio_io_uring_prep_nop(sqe);
 }
 
 pub unsafe fn io_uring_submit(ring: *mut io_uring) -> i32 {

@@ -8,8 +8,6 @@
 )]
 #![allow(non_camel_case_types)]
 
-use std::collections::VecDeque;
-
 pub mod io;
 pub mod libc;
 pub mod liburing;
@@ -28,7 +26,7 @@ struct FdFutureSharedState {
 
 struct IoContextState {
   ring: *mut liburing::io_uring,
-  task_ctx: Option<*mut dyn std::future::Future<Output = ()>>,
+  task_ctx: Option<*mut Task>,
   tasks: std::collections::VecDeque<std::pin::Pin<Box<Task>>>,
 }
 
@@ -62,7 +60,7 @@ impl IoContext {
       p: std::rc::Rc::new(std::cell::UnsafeCell::new(IoContextState {
         ring,
         task_ctx: None,
-        tasks: VecDeque::default(),
+        tasks: std::collections::VecDeque::default(),
       })),
     }
   }
@@ -122,7 +120,7 @@ impl IoContext {
       let ring = state.ring;
 
       let cqe = unsafe { liburing::io_uring_wait_cqe(ring, &mut res) };
-      println!("res is: {res}");
+
       let _guard = CQESeenGuard { ring, cqe };
       let p = unsafe { liburing::io_uring_cqe_get_data(cqe) };
       if p.is_null() {
@@ -178,8 +176,25 @@ impl Executor {
     (*std::rc::Rc::as_ptr(&self.p)).get()
   }
 
-  // pub fn post(&mut self, task: Box<Task>) {
-  //   let state = unsafe { &mut *self.get_state() };
-  //   state.tasks.push_back(task);
-  // }
+  pub fn post(&mut self, mut task: std::pin::Pin<Box<Task>>) {
+    let state = unsafe { &mut *self.get_state() };
+    let taskp = unsafe { task.as_mut().get_unchecked_mut() as *mut _ };
+
+    let statep = std::rc::Rc::new(std::cell::UnsafeCell::new(FdFutureSharedState {
+      done: false,
+      fd: -1,
+      res: -1,
+      task: Some(taskp),
+    }));
+
+    let ring = state.ring;
+    let sqe = unsafe { liburing::make_sqe(ring) };
+    let user_data = std::rc::Rc::into_raw(statep).cast::<libc::c_void>();
+
+    unsafe { liburing::io_uring_sqe_set_data(sqe, user_data as *mut _) };
+    unsafe { liburing::io_uring_prep_nop(sqe) };
+    unsafe { liburing::io_uring_submit(ring) };
+
+    state.tasks.push_back(task);
+  }
 }

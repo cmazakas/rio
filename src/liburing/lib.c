@@ -59,6 +59,11 @@ void rio_io_uring_prep_cancel(struct io_uring_sqe *sqe,
   io_uring_prep_cancel(sqe, user_data, flags);
 }
 
+void rio_io_uring_prep_nop(struct io_uring_sqe *sqe)
+{
+  io_uring_prep_nop(sqe);
+}
+
 int rio_io_uring_submit(struct io_uring *ring)
 {
   return io_uring_submit(ring);
