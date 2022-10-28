@@ -509,6 +509,51 @@ fn cancellation_with_drop() {
     })
   });
 
+  ioc.post({
+    let ex = ioc.get_executor();
+    Box::pin(async move {
+      let mut timer = rio::io::Timer::new(ex);
+      timer.expires_after(std::time::Duration::from_millis(250));
+      timer.async_wait().await.unwrap();
+      unsafe { NUM_RUNS += 1 };
+    })
+  });
+
+  ioc.run();
+  assert_eq!(unsafe { NUM_RUNS }, 3);
+}
+
+#[test]
+fn cancellation_post_expiration() {
+  static mut NUM_RUNS: i32 = 0;
+
+  let mut ioc = rio::IoContext::new();
+  ioc.post({
+    let ex = ioc.get_executor();
+    Box::pin(async move {
+      let mut timer = rio::io::Timer::new(ex);
+      timer.expires_after(std::time::Duration::from_millis(30));
+      let f = timer.async_wait();
+      let c = f.get_cancel_handle();
+
+      f.await.unwrap();
+      c.cancel();
+
+      unsafe { NUM_RUNS += 1 };
+    })
+  });
+
+  ioc.post({
+    let ex = ioc.get_executor();
+    Box::pin(async move {
+      let mut timer = rio::io::Timer::new(ex);
+      timer.expires_after(std::time::Duration::from_millis(250));
+      timer.async_wait().await.unwrap();
+
+      unsafe { NUM_RUNS += 1 };
+    })
+  });
+
   ioc.run();
   assert_eq!(unsafe { NUM_RUNS }, 2);
 }
