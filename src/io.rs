@@ -1,18 +1,25 @@
 use crate::{self as rio, libc};
 
-pub struct TimerFuture {
+pub struct TimerFuture<'a> {
   initiated: bool,
   ex: rio::Executor,
   state: std::rc::Rc<std::cell::UnsafeCell<rio::FdFutureSharedState>>,
   buf: std::pin::Pin<Box<u64>>,
   dur: std::time::Duration,
+  _m: std::marker::PhantomData<&'a mut Timer>,
 }
 
-impl TimerFuture {
+pub struct TimerCancel {
+  ex: rio::Executor,
+  state: std::rc::Rc<std::cell::UnsafeCell<rio::FdFutureSharedState>>,
+}
+
+impl<'a> TimerFuture<'a> {
   fn new(
     ex: rio::Executor,
     state: std::rc::Rc<std::cell::UnsafeCell<rio::FdFutureSharedState>>,
     dur: std::time::Duration,
+    m: std::marker::PhantomData<&'a mut Timer>,
   ) -> Self {
     Self {
       initiated: false,
@@ -20,11 +27,20 @@ impl TimerFuture {
       ex,
       buf: Box::pin(0_u64),
       dur,
+      _m: m,
+    }
+  }
+
+  #[must_use]
+  pub fn get_cancel_handle(&self) -> TimerCancel {
+    TimerCancel {
+      ex: self.ex.clone(),
+      state: self.state.clone(),
     }
   }
 }
 
-impl Drop for TimerFuture {
+impl<'a> Drop for TimerFuture<'a> {
   fn drop(&mut self) {
     let p = unsafe { (*std::rc::Rc::as_ptr(&self.state)).get() };
     if self.initiated && unsafe { !(*p).done } {
@@ -34,6 +50,18 @@ impl Drop for TimerFuture {
         rio::liburing::io_uring_prep_cancel(sqe, p.cast::<libc::c_void>(), 0);
         rio::liburing::io_uring_submit((*self.ex.get_state()).ring);
       }
+    }
+  }
+}
+
+impl TimerCancel {
+  pub fn cancel(self) {
+    unsafe {
+      let p = (*std::rc::Rc::as_ptr(&self.state)).get();
+      let ring = (*self.ex.get_state()).ring;
+      let sqe = rio::liburing::make_sqe(ring);
+      rio::liburing::io_uring_prep_cancel(sqe, p.cast::<libc::c_void>(), 0);
+      rio::liburing::io_uring_submit((*self.ex.get_state()).ring);
     }
   }
 }
@@ -50,7 +78,7 @@ impl std::fmt::Debug for Err {
   }
 }
 
-impl std::future::Future for TimerFuture {
+impl<'a> std::future::Future for TimerFuture<'a> {
   type Output = Result<(), Err>;
 
   fn poll(
@@ -128,7 +156,7 @@ impl Timer {
     self.dur = dur;
   }
 
-  pub fn async_wait(&mut self) -> impl std::future::Future<Output = Result<(), Err>> + '_ {
+  pub fn async_wait(&mut self) -> TimerFuture {
     let fd = self.fd;
 
     let shared_statep = std::rc::Rc::new(std::cell::UnsafeCell::new(rio::FdFutureSharedState {
@@ -138,7 +166,12 @@ impl Timer {
       task: None,
     }));
 
-    TimerFuture::new(self.ex.clone(), shared_statep, self.dur)
+    TimerFuture::new(
+      self.ex.clone(),
+      shared_statep,
+      self.dur,
+      std::marker::PhantomData,
+    )
   }
 }
 

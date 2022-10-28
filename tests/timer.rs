@@ -450,40 +450,65 @@ fn nested_future() {
 }
 
 #[test]
-fn executor_post_ioc_running() {
+fn cancellation() {
   static mut WAS_RUN: bool = false;
 
   let mut ioc = rio::IoContext::new();
   ioc.post({
     let mut ex = ioc.get_executor();
     Box::pin(async move {
-      ex.post({
+      let mut timer = rio::io::Timer::new(ex.clone());
+      timer.expires_after(std::time::Duration::from_secs(30));
+      let f = timer.async_wait();
+      let c = f.get_cancel_handle();
+
+      ex.post(Box::pin({
         let ex = ex.clone();
-        Box::pin(async move {
-          let mut timer = rio::io::Timer::new(ex);
-          let dur = std::time::Duration::from_millis(500);
-          let t = std::time::Instant::now();
-          timer.expires_after(dur);
+        async move {
+          let mut timer2 = rio::io::Timer::new(ex);
+          timer2.expires_after(std::time::Duration::from_millis(250));
+          timer2.async_wait().await.unwrap();
+          c.cancel();
+        }
+      }));
 
-          timer.async_wait().await.unwrap();
-          timer.async_wait().await.unwrap();
+      f.await
+        .expect_err("Operation didn't report cancellation properly!");
 
-          assert!(std::time::Instant::now().duration_since(t).as_millis() >= 2 * 500);
-
-          unsafe { WAS_RUN = true };
-        })
-      });
-
-      let mut timer = rio::io::Timer::new(ex);
-      let dur = std::time::Duration::from_millis(500);
-      let t = std::time::Instant::now();
-      timer.expires_after(dur);
-      timer.async_wait().await.unwrap();
-
-      assert!(std::time::Instant::now().duration_since(t).as_millis() >= 500);
+      unsafe { WAS_RUN = true };
     })
   });
 
   ioc.run();
   assert!(unsafe { WAS_RUN });
+}
+
+#[test]
+fn cancellation_with_drop() {
+  static mut NUM_RUNS: i32 = 0;
+
+  let mut ioc = rio::IoContext::new();
+  ioc.post({
+    let mut ex = ioc.get_executor();
+    Box::pin(async move {
+      let mut timer = rio::io::Timer::new(ex.clone());
+      timer.expires_after(std::time::Duration::from_secs(30));
+      let f = timer.async_wait();
+      let c = f.get_cancel_handle();
+
+      ex.post(Box::pin({
+        async move {
+          c.cancel();
+          unsafe { NUM_RUNS += 1 };
+        }
+      }));
+
+      drop(f);
+
+      unsafe { NUM_RUNS += 1 };
+    })
+  });
+
+  ioc.run();
+  assert_eq!(unsafe { NUM_RUNS }, 2);
 }
