@@ -47,6 +47,7 @@ impl IoContextState {}
 
 impl Drop for IoContextState {
   fn drop(&mut self) {
+    println!("Tearing down the io_uring context...");
     unsafe { liburing::teardown(self.ring) }
   }
 }
@@ -150,17 +151,15 @@ impl IoContext {
 
       state.task_ctx = Some(taskp);
 
-      let is_done = {
-        let task = unsafe { std::pin::Pin::new_unchecked(&mut *taskp) };
-        let mut cx = std::task::Context::from_waker(&waker);
+      let task = unsafe { std::pin::Pin::new_unchecked(&mut *taskp) };
+      let mut cx = std::task::Context::from_waker(&waker);
 
-        task.poll(&mut cx).is_ready()
-      };
-
-      if is_done {
+      if task.poll(&mut cx).is_ready() {
         drop(state.tasks.remove(idx));
       }
     }
+
+    state.task_ctx = None;
   }
 }
 
