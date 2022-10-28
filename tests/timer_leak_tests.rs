@@ -3,6 +3,7 @@ extern crate rio;
 use std::future::Future;
 
 #[test]
+#[ignore]
 fn forget_future_initiated() {
   /**
    * Test that forget()'ing an initiated future for the timer is harmless.
@@ -46,6 +47,7 @@ fn forget_future_initiated() {
 }
 
 #[test]
+#[ignore]
 fn forget_timer_initiated() {
   /**
    * Test that forget() is harmless when the associated future is initiated and
