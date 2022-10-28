@@ -42,6 +42,8 @@ extern "C" {
   fn rio_timerfd_create() -> i32;
   fn rio_timerfd_settime(fd: i32, secs: u64, nanos: u64) -> i32;
   fn rio_io_uring_cqe_get_data(cqe: *const io_uring_cqe) -> *mut libc::c_void;
+
+  fn rio_make_pipe(pipefd: *mut i32) -> i32;
 }
 
 #[must_use]
@@ -128,4 +130,9 @@ pub unsafe fn timerfd_settime(fd: i32, secs: u64, nanos: u64) -> Result<(), Err>
     -5 => Result::Err(Err::ECANCELED),
     _ => Result::Err(Err::UNKNOWN),
   }
+}
+
+#[must_use]
+pub fn make_pipe(pipefd: &mut [i32; 2]) -> i32 {
+  unsafe { rio_make_pipe(pipefd.as_mut_ptr()) }
 }

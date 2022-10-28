@@ -137,3 +137,8 @@ int rio_timerfd_settime(int fd, unsigned long secs, unsigned long nanos)
 
   return 0;
 }
+
+int rio_make_pipe(int pipefd[2])
+{
+  return pipe(pipefd);
+}

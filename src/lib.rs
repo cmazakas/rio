@@ -91,6 +91,27 @@ impl IoContext {
       }
     }
 
+    struct PipeGuard {
+      pipefd: [i32; 2],
+    }
+
+    impl Drop for PipeGuard {
+      fn drop(&mut self) {
+        unsafe {
+          libc::close(self.pipefd[0]);
+          libc::close(self.pipefd[1]);
+        };
+      }
+    }
+
+    let mut pipefd = [-1_i32; 2];
+    assert!(
+      liburing::make_pipe(&mut pipefd) != -1,
+      "unable to establish pipe!"
+    );
+
+    let _pipe_guard = PipeGuard { pipefd };
+
     let waker = std::sync::Arc::new(NopWaker {}).into();
     let state = unsafe { &mut *self.get_state() };
 
