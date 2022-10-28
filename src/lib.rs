@@ -70,8 +70,8 @@ impl IoContext {
   }
 
   pub fn post(&mut self, task: std::pin::Pin<Box<Task>>) {
-    let state = unsafe { &mut *self.get_state() };
-    state.tasks.push_back(task);
+    let mut ex = self.get_executor();
+    ex.post(task);
   }
 
   #[must_use]
@@ -92,33 +92,11 @@ impl IoContext {
     }
 
     let waker = std::sync::Arc::new(NopWaker {}).into();
-
     let state = unsafe { &mut *self.get_state() };
-
-    let mut idx = 0;
-    while idx < state.tasks.len() {
-      state.task_ctx = {
-        let task: *mut _ = unsafe { state.tasks[idx].as_mut().get_unchecked_mut() };
-        Some(task)
-      };
-
-      let mut fut = state.tasks[idx].as_mut();
-      let mut cx = std::task::Context::from_waker(&waker);
-
-      if fut.as_mut().poll(&mut cx).is_ready() {
-        drop(state.tasks.remove(idx));
-        if state.tasks.is_empty() {
-          break;
-        }
-      } else {
-        idx += 1;
-      }
-    }
 
     while !state.tasks.is_empty() {
       let mut res = -1;
       let ring = state.ring;
-
       let cqe = unsafe { liburing::io_uring_wait_cqe(ring, &mut res) };
 
       let _guard = CQESeenGuard { ring, cqe };
