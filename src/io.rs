@@ -9,6 +9,7 @@ pub struct TimerFuture<'a> {
   _m: std::marker::PhantomData<&'a mut Timer>,
 }
 
+#[derive(Clone)]
 pub struct TimerCancel {
   ex: rio::Executor,
   state: std::rc::Rc<std::cell::UnsafeCell<rio::FdFutureSharedState>>,
@@ -58,28 +59,27 @@ impl TimerCancel {
   pub fn cancel(self) {
     unsafe {
       let p = (*std::rc::Rc::as_ptr(&self.state)).get();
+      if (*p).disarmed {
+        return;
+      }
+
       let ring = (*self.ex.get_state()).ring;
       let sqe = rio::liburing::make_sqe(ring);
       rio::liburing::io_uring_prep_cancel(sqe, p.cast::<libc::c_void>(), 0);
       rio::liburing::io_uring_submit((*self.ex.get_state()).ring);
     }
   }
-}
 
-pub enum Err {
-  ReadFailed,
-}
-
-impl std::fmt::Debug for Err {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Self::ReadFailed => f.write_str("Read did not complete successfully"),
-    }
+  pub fn disarm(&mut self) {
+    unsafe {
+      let p = (*std::rc::Rc::as_ptr(&self.state)).get();
+      (*p).disarmed = true;
+    };
   }
 }
 
 impl<'a> std::future::Future for TimerFuture<'a> {
-  type Output = Result<(), Err>;
+  type Output = Result<(), libc::Errno>;
 
   fn poll(
     mut self: std::pin::Pin<&mut Self>,
@@ -93,7 +93,8 @@ impl<'a> std::future::Future for TimerFuture<'a> {
       }
 
       if unsafe { (*p).res < 0 } {
-        return std::task::Poll::Ready(Err(Err::ReadFailed));
+        let e = unsafe { -(*p).res };
+        return std::task::Poll::Ready(Err(libc::errno(e)));
       }
 
       return std::task::Poll::Ready(Ok(()));
@@ -164,6 +165,7 @@ impl Timer {
       fd,
       res: -1,
       task: None,
+      disarmed: false,
     }));
 
     TimerFuture::new(

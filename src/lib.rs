@@ -22,6 +22,7 @@ struct FdFutureSharedState {
   pub fd: i32,
   pub res: i32,
   pub task: Option<*mut Task>,
+  pub disarmed: bool,
 }
 
 struct IoContextState {
@@ -183,6 +184,7 @@ impl Executor {
       fd: -1,
       res: -1,
       task: Some(taskp),
+      disarmed: false,
     }));
 
     let ring = state.ring;

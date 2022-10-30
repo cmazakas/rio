@@ -472,8 +472,11 @@ fn cancellation() {
         }
       }));
 
-      f.await
-        .expect_err("Operation didn't report cancellation properly!");
+      let result = f.await;
+      match result.expect_err("Operation didn't report cancellation properly!") {
+        rio::libc::Errno::ECANCELED => {}
+        _ => panic!("Incorrect error type returned, should be ECANCELED"),
+      }
 
       unsafe { WAS_RUN = true };
     })
@@ -549,6 +552,43 @@ fn cancellation_post_expiration() {
       let mut timer = rio::io::Timer::new(ex);
       timer.expires_after(std::time::Duration::from_millis(250));
       timer.async_wait().await.unwrap();
+
+      unsafe { NUM_RUNS += 1 };
+    })
+  });
+
+  ioc.run();
+  assert_eq!(unsafe { NUM_RUNS }, 2);
+}
+
+#[test]
+fn cancellation_disarming() {
+  static mut NUM_RUNS: i32 = 0;
+
+  let mut ioc = rio::IoContext::new();
+  ioc.post({
+    let mut ex = ioc.get_executor();
+    Box::pin(async move {
+      let mut timer = rio::io::Timer::new(ex.clone());
+      timer.expires_after(std::time::Duration::from_millis(30));
+      let f = timer.async_wait();
+      let mut c = f.get_cancel_handle();
+
+      ex.post({
+        let ex = ex.clone();
+        let c = c.clone();
+        Box::pin(async move {
+          let mut timer = rio::io::Timer::new(ex);
+          timer.expires_after(std::time::Duration::from_secs(1));
+          timer.async_wait().await.unwrap();
+          c.cancel();
+          assert_eq!(unsafe { NUM_RUNS }, 1);
+          unsafe { NUM_RUNS += 1 };
+        })
+      });
+
+      f.await.unwrap();
+      c.disarm();
 
       unsafe { NUM_RUNS += 1 };
     })

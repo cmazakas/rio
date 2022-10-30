@@ -142,3 +142,15 @@ int rio_make_pipe(int pipefd[2])
 {
   return pipe(pipefd);
 }
+
+int errno_to_int(int const e)
+{
+  switch (e)
+  {
+  case ECANCELED:
+    return -1;
+
+  default:
+    return -1337;
+  }
+}
