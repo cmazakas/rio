@@ -85,7 +85,7 @@ impl<'a> std::future::Future for TimerFuture<'a> {
     mut self: std::pin::Pin<&mut Self>,
     _cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Self::Output> {
-    let p = unsafe { (*std::rc::Rc::as_ptr(&(*self).state)).get() };
+    let p = unsafe { (*std::rc::Rc::as_ptr(&(self.state))).get() };
     if self.initiated {
       let done = unsafe { (*p).done };
       if !done {
