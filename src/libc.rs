@@ -6,6 +6,7 @@ pub enum c_void {
 extern "C" {
   pub fn close(fd: i32) -> i32;
   pub fn errno_to_int(e: i32) -> i32;
+  pub fn write(fd: i32, buf: *const c_void, count: usize);
 }
 
 pub enum Errno {

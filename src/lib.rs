@@ -17,6 +17,61 @@ type Task = dyn std::future::Future<Output = ()>;
 
 struct NopWaker {}
 
+#[repr(transparent)]
+struct SyncUnsafeCell<T: ?Sized> {
+  value: std::cell::UnsafeCell<T>,
+}
+
+impl<T> SyncUnsafeCell<T> {
+  #[must_use]
+  pub fn new(value: T) -> Self {
+    Self {
+      value: std::cell::UnsafeCell::new(value),
+    }
+  }
+}
+
+unsafe impl<T> Send for SyncUnsafeCell<T> {}
+unsafe impl<T> Sync for SyncUnsafeCell<T> {}
+
+#[derive(Clone)]
+struct WritePipe {
+  fdp: std::sync::Arc<std::sync::Mutex<i32>>,
+}
+
+struct PipeWaker {
+  p: WritePipe,
+  task: SyncUnsafeCell<*mut Task>,
+}
+
+impl std::task::Wake for PipeWaker {
+  fn wake(self: std::sync::Arc<Self>) {
+    let fd_guard = self.p.fdp.lock().unwrap();
+
+    unsafe {
+      let taskp = *self.task.value.get();
+      libc::write(
+        *fd_guard,
+        std::ptr::addr_of!(taskp).cast::<libc::c_void>(),
+        std::mem::size_of::<*mut Task>(),
+      );
+    }
+  }
+}
+
+pub struct WakerFuture {}
+
+impl std::future::Future for WakerFuture {
+  type Output = std::task::Waker;
+
+  fn poll(
+    self: std::pin::Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Self::Output> {
+    std::task::Poll::Ready(cx.waker().clone())
+  }
+}
+
 struct FdFutureSharedState {
   pub done: bool,
   pub fd: i32,
@@ -48,7 +103,6 @@ impl IoContextState {}
 
 impl Drop for IoContextState {
   fn drop(&mut self) {
-    println!("Tearing down the io_uring context...");
     unsafe { liburing::teardown(self.ring) }
   }
 }
@@ -81,6 +135,7 @@ impl IoContext {
     Executor { p: self.p.clone() }
   }
 
+  #[allow(clippy::too_many_lines)]
   pub fn run(&mut self) {
     pub struct CQESeenGuard {
       ring: *mut liburing::io_uring,
@@ -113,31 +168,62 @@ impl IoContext {
     );
 
     let _pipe_guard = PipeGuard { pipefd };
+    let mut buf = std::mem::MaybeUninit::<*mut Task>::uninit();
+    let write_pipe = WritePipe {
+      fdp: std::sync::Arc::new(std::sync::Mutex::new(pipefd[1])),
+    };
 
-    let waker = std::sync::Arc::new(NopWaker {}).into();
     let state = unsafe { &mut *self.get_state() };
+    let ring = state.ring;
+
+    #[allow(clippy::cast_possible_truncation)]
+    unsafe {
+      let sqe = liburing::make_sqe(ring);
+      liburing::io_uring_prep_read(
+        sqe,
+        pipefd[0],
+        buf.as_mut_ptr().cast::<_>(),
+        std::mem::size_of::<*mut Task>() as u32,
+        0,
+      );
+      liburing::io_uring_submit(ring);
+    };
 
     while !state.tasks.is_empty() {
       let mut res = -1;
-      let ring = state.ring;
       let cqe = unsafe { liburing::io_uring_wait_cqe(ring, &mut res) };
 
       let _guard = CQESeenGuard { ring, cqe };
       let p = unsafe { liburing::io_uring_cqe_get_data(cqe) };
-      if p.is_null() {
-        continue;
-      }
 
-      let p = p.cast::<std::cell::UnsafeCell<FdFutureSharedState>>();
-      let cqe_state = unsafe { std::rc::Rc::from_raw(p) };
+      let taskp: *mut Task = if p.is_null() {
+        let p = unsafe { buf.assume_init_read() };
 
-      let p: *mut FdFutureSharedState = unsafe { (*std::rc::Rc::as_ptr(&cqe_state)).get() };
-      unsafe {
-        (*p).done = true;
-        (*p).res = res;
-      }
+        #[allow(clippy::cast_possible_truncation)]
+        unsafe {
+          let sqe = liburing::make_sqe(ring);
+          liburing::io_uring_prep_read(
+            sqe,
+            pipefd[0],
+            buf.as_mut_ptr().cast::<_>(),
+            std::mem::size_of::<*mut Task>() as u32,
+            0,
+          );
+          liburing::io_uring_submit(ring);
+        };
 
-      let taskp = unsafe { (*p).task.take().unwrap() };
+        p
+      } else {
+        let p = p.cast::<std::cell::UnsafeCell<FdFutureSharedState>>();
+        let cqe_state = unsafe { std::rc::Rc::from_raw(p) };
+
+        let p: *mut FdFutureSharedState = unsafe { (*std::rc::Rc::as_ptr(&cqe_state)).get() };
+        unsafe {
+          (*p).done = true;
+          (*p).res = res;
+        }
+        unsafe { (*p).task.take().unwrap() }
+      };
 
       let mut it = state.tasks.iter_mut();
       let idx = match it.position(|p| {
@@ -152,8 +238,14 @@ impl IoContext {
 
       state.task_ctx = Some(taskp);
 
+      let pipe_waker = std::sync::Arc::new(PipeWaker {
+        p: write_pipe.clone(),
+        task: SyncUnsafeCell::new(taskp),
+      })
+      .into();
+
       let task = unsafe { std::pin::Pin::new_unchecked(&mut *taskp) };
-      let mut cx = std::task::Context::from_waker(&waker);
+      let mut cx = std::task::Context::from_waker(&pipe_waker);
 
       if task.poll(&mut cx).is_ready() {
         drop(state.tasks.remove(idx));
