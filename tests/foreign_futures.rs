@@ -112,3 +112,78 @@ fn foreign_multiple_timer_future() {
 
   assert_eq!(unsafe { NUM_RUNS }, 2);
 }
+
+#[test]
+#[ignore]
+fn mixed_futures() {
+  static mut NUM_RUNS: i32 = 0;
+
+  let mut ioc = rio::IoContext::new();
+  ioc.post({
+    let ex = ioc.get_executor();
+    Box::pin(async move {
+      let mut timer = rio::io::Timer::new(ex);
+      timer.expires_after(std::time::Duration::from_millis(500));
+      timer.async_wait().await.unwrap();
+
+      TimerFuture { join_handle: None }.await;
+
+      timer.async_wait().await.unwrap();
+      unsafe { NUM_RUNS += 1 };
+    })
+  });
+
+  ioc.run();
+
+  assert_eq!(unsafe { NUM_RUNS }, 1);
+}
+
+#[test]
+#[ignore]
+fn forget() {
+  static mut NUM_RUNS: i32 = 0;
+
+  let mut ioc = rio::IoContext::new();
+  ioc.post({
+    Box::pin(async move {
+      let mut f1 = TimerFuture { join_handle: None };
+
+      let waker = rio::WakerFuture {}.await;
+      let mut cx = std::task::Context::from_waker(&waker);
+
+      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }.is_pending());
+
+      std::mem::forget(f1);
+      unsafe { NUM_RUNS += 1 };
+    })
+  });
+
+  ioc.run();
+
+  assert_eq!(unsafe { NUM_RUNS }, 1);
+}
+
+#[test]
+#[ignore]
+fn drop() {
+  static mut NUM_RUNS: i32 = 0;
+
+  let mut ioc = rio::IoContext::new();
+  ioc.post({
+    Box::pin(async move {
+      let mut f1 = TimerFuture { join_handle: None };
+
+      let waker = rio::WakerFuture {}.await;
+      let mut cx = std::task::Context::from_waker(&waker);
+
+      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }.is_pending());
+
+      std::mem::drop(f1);
+      unsafe { NUM_RUNS += 1 };
+    })
+  });
+
+  ioc.run();
+
+  assert_eq!(unsafe { NUM_RUNS }, 1);
+}
