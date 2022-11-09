@@ -168,7 +168,6 @@ impl IoContext {
     );
 
     let _pipe_guard = PipeGuard { pipefd };
-    let mut buf = std::mem::MaybeUninit::<*mut Task>::uninit();
     let write_pipe = WritePipe {
       fdp: std::sync::Arc::new(std::sync::Mutex::new(pipefd[1])),
     };
@@ -176,6 +175,7 @@ impl IoContext {
     let state = unsafe { &mut *self.get_state() };
     let ring = state.ring;
 
+    let mut buf = std::mem::MaybeUninit::<*mut Task>::uninit();
     #[allow(clippy::cast_possible_truncation)]
     unsafe {
       let sqe = liburing::make_sqe(ring);
@@ -197,6 +197,10 @@ impl IoContext {
       let p = unsafe { liburing::io_uring_cqe_get_data(cqe) };
 
       let taskp: *mut Task = if p.is_null() {
+        if res != std::mem::size_of::<*mut Task>().try_into().unwrap() {
+          continue;
+        }
+
         let p = unsafe { buf.assume_init_read() };
 
         #[allow(clippy::cast_possible_truncation)]

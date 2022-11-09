@@ -37,6 +37,7 @@ impl std::future::Future for TimerFuture {
 }
 
 #[test]
+#[ignore]
 fn foreign_timer_future() {
   static mut NUM_RUNS: i32 = 0;
 
@@ -54,6 +55,7 @@ fn foreign_timer_future() {
 }
 
 #[test]
+#[ignore]
 fn foreign_multiple_timer_future() {
   static mut NUM_RUNS: i32 = 0;
 
