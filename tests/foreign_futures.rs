@@ -122,7 +122,7 @@ fn mixed_futures() {
   ioc.post({
     let ex = ioc.get_executor();
     Box::pin(async move {
-      let mut timer = rio::io::Timer::new(ex);
+      let mut timer = rio::time::Timer::new(ex);
       timer.expires_after(std::time::Duration::from_millis(500));
       timer.async_wait().await.unwrap();
 

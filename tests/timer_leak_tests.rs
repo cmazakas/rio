@@ -18,7 +18,7 @@ fn forget_future_initiated() {
   ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
-      let mut timer = rio::io::Timer::new(ex.clone());
+      let mut timer = rio::time::Timer::new(ex.clone());
       let timeout = std::time::Duration::from_millis(10);
       timer.expires_after(timeout);
 
@@ -30,7 +30,7 @@ fn forget_future_initiated() {
       assert!(unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }.is_pending());
       std::mem::forget(f);
 
-      let mut timer = rio::io::Timer::new(ex.clone());
+      let mut timer = rio::time::Timer::new(ex.clone());
       let timeout = std::time::Duration::from_millis(20);
       timer.expires_after(timeout);
       timer.async_wait().await.unwrap();
@@ -63,7 +63,7 @@ fn forget_timer_initiated() {
   ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
-      let mut timer = rio::io::Timer::new(ex.clone());
+      let mut timer = rio::time::Timer::new(ex.clone());
       let timeout = std::time::Duration::from_millis(10);
       timer.expires_after(timeout);
 
@@ -76,7 +76,7 @@ fn forget_timer_initiated() {
       std::mem::forget(f);
       std::mem::forget(timer);
 
-      let mut timer = rio::io::Timer::new(ex.clone());
+      let mut timer = rio::time::Timer::new(ex.clone());
       let timeout = std::time::Duration::from_millis(20);
       timer.expires_after(timeout);
       timer.async_wait().await.unwrap();

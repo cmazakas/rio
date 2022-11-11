@@ -11,7 +11,7 @@ fn executor_post_ioc_running() {
       ex.post({
         let ex = ex.clone();
         Box::pin(async move {
-          let mut timer = rio::io::Timer::new(ex);
+          let mut timer = rio::time::Timer::new(ex);
           let dur = std::time::Duration::from_millis(500);
           let t = std::time::Instant::now();
           timer.expires_after(dur);
@@ -25,7 +25,7 @@ fn executor_post_ioc_running() {
         })
       });
 
-      let mut timer = rio::io::Timer::new(ex);
+      let mut timer = rio::time::Timer::new(ex);
       let dur = std::time::Duration::from_millis(500);
       let t = std::time::Instant::now();
       timer.expires_after(dur);
@@ -53,7 +53,7 @@ fn executor_post_ioc_not_running() {
   ex.post({
     let ex = ex.clone();
     Box::pin(async move {
-      let mut timer = rio::io::Timer::new(ex);
+      let mut timer = rio::time::Timer::new(ex);
       let dur = std::time::Duration::from_millis(500);
       let t = std::time::Instant::now();
       timer.expires_after(dur);
@@ -69,7 +69,7 @@ fn executor_post_ioc_not_running() {
 
   ioc.post({
     Box::pin(async move {
-      let mut timer = rio::io::Timer::new(ex);
+      let mut timer = rio::time::Timer::new(ex);
       let dur = std::time::Duration::from_millis(500);
       let t = std::time::Instant::now();
       timer.expires_after(dur);

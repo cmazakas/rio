@@ -10,7 +10,7 @@ pub fn main() {
     ioc.post(Box::pin(async move {
       println!("Starting the timer coro...");
 
-      let mut timer = rio::io::Timer::new(ex);
+      let mut timer = rio::time::Timer::new(ex);
       let time = (idx + 1) * 1000;
       timer.expires_after(std::time::Duration::from_millis(time));
 
