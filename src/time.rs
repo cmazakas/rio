@@ -94,7 +94,7 @@ impl<'a> std::future::Future for TimerFuture<'a> {
 
       if unsafe { (*p).res < 0 } {
         let e = unsafe { -(*p).res };
-        return std::task::Poll::Ready(Err(libc::errno(e)));
+        return std::task::Poll::Ready(libc::errno(e));
       }
 
       return std::task::Poll::Ready(Ok(()));
