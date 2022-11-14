@@ -8,6 +8,7 @@
 )]
 #![allow(non_camel_case_types)]
 
+pub mod ip;
 pub mod libc;
 pub mod liburing;
 pub mod time;
@@ -192,6 +193,7 @@ impl IoContext {
     while !state.tasks.is_empty() {
       let mut res = -1;
       let cqe = unsafe { liburing::io_uring_wait_cqe(ring, &mut res) };
+      assert!(!cqe.is_null());
 
       let _guard = CQESeenGuard { ring, cqe };
       let p = unsafe { liburing::io_uring_cqe_get_data(cqe) };

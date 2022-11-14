@@ -3,6 +3,9 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/timerfd.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include <arpa/inet.h>
 
 #include <assert.h>
 #include <errno.h>
@@ -38,12 +41,9 @@ void rio_io_uring_sqe_set_data(struct io_uring_sqe *sqe, void *data)
   io_uring_sqe_set_data(sqe, data);
 }
 
-void rio_io_uring_prep_accept_af_unix(struct io_uring_sqe *sqe, int fd)
+void rio_io_uring_prep_accept(struct io_uring_sqe *sqe, int fd)
 {
-  struct sockaddr_un sockaddr;
-  memset(&sockaddr, 0, sizeof(sockaddr));
-  socklen_t addrlen = 0;
-  io_uring_prep_accept(sqe, fd, (struct sockaddr *)&sockaddr, &addrlen, 0);
+  io_uring_prep_accept(sqe, fd, NULL, 0, 0);
 }
 
 void rio_io_uring_prep_read(struct io_uring_sqe *sqe,
@@ -398,4 +398,38 @@ int errno_to_int(int const e)
   default:
     return -1337;
   }
+}
+
+int rio_make_ipv4_tcp_server_socket(uint32_t ipv4_addr, uint16_t port, int *const fdp)
+{
+  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (-1 == fd)
+  {
+    return errno;
+  }
+
+  int enable = 1;
+  if (-1 == setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)))
+  {
+    return errno;
+  }
+
+  struct sockaddr_in addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(port);
+  addr.sin_addr.s_addr = ntohl(ipv4_addr);
+
+  if (-1 == bind(fd, &addr, sizeof(addr)))
+  {
+    return errno;
+  }
+
+  if (-1 == listen(fd, 256))
+  {
+    return errno;
+  }
+
+  *fdp = fd;
+  return 0;
 }

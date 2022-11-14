@@ -147,7 +147,7 @@ pub enum Errno {
 #[allow(clippy::too_many_lines)]
 pub fn errno(e: i32) -> Result<(), Errno> {
   match unsafe { errno_to_int(e) } {
-    0 => Result::Ok(()),
+    x if x >= 0 => Ok(()),
     -1 => Result::Err(Errno::EPERM),
     -2 => Result::Err(Errno::ENOENT),
     -3 => Result::Err(Errno::ESRCH),
@@ -287,7 +287,8 @@ impl std::fmt::Debug for Errno {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       Self::ECANCELED => f.write_str("ecanceled"),
-      Self::RIO_UNKNOWN => f.write_str("ecountered an unkown error"),
+      Self::EADDRNOTAVAIL => f.write_str("eaddrnotavail"),
+      Self::RIO_UNKNOWN => f.write_str("encountered an unknown error"),
       _ => f.write_str("Unsupported error code"),
     }
   }

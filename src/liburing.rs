@@ -26,7 +26,7 @@ extern "C" {
   fn rio_make_sqe(ring: *mut io_uring) -> *mut io_uring_sqe;
   fn rio_io_uring_sqe_set_data(sqe: *mut io_uring_sqe, data: *mut libc::c_void);
   fn rio_io_uring_submit(ring: *mut io_uring) -> i32;
-  fn rio_io_uring_prep_accept_af_unix(sqe: *mut io_uring_sqe, fd: i32);
+  fn rio_io_uring_prep_accept(sqe: *mut io_uring_sqe, fd: i32);
   fn rio_io_uring_prep_read(
     sqe: *mut io_uring_sqe,
     fd: i32,
@@ -44,6 +44,7 @@ extern "C" {
   fn rio_io_uring_cqe_get_data(cqe: *const io_uring_cqe) -> *mut libc::c_void;
 
   fn rio_make_pipe(pipefd: *mut i32) -> i32;
+  fn rio_make_ipv4_tcp_server_socket(ipv4_addr: u32, port: u16, fdp: *mut i32) -> i32;
 }
 
 #[must_use]
@@ -63,8 +64,8 @@ pub unsafe fn io_uring_sqe_set_data(sqe: *mut io_uring_sqe, data: *mut libc::c_v
   rio_io_uring_sqe_set_data(sqe, data);
 }
 
-pub unsafe fn io_uring_prep_accept_af_unix(sqe: *mut io_uring_sqe, fd: i32) {
-  rio_io_uring_prep_accept_af_unix(sqe, fd);
+pub unsafe fn io_uring_prep_accept(sqe: *mut io_uring_sqe, fd: i32) {
+  rio_io_uring_prep_accept(sqe, fd);
 }
 
 pub unsafe fn io_uring_prep_read(
@@ -118,4 +119,13 @@ pub unsafe fn timerfd_settime(fd: i32, secs: u64, nanos: u64) -> Result<(), libc
 #[must_use]
 pub fn make_pipe(pipefd: &mut [i32; 2]) -> i32 {
   unsafe { rio_make_pipe(pipefd.as_mut_ptr()) }
+}
+
+pub fn make_ipv4_tcp_server_socket(ipv4_addr: u32, port: u16) -> Result<i32, libc::Errno> {
+  let mut fd = -1;
+  let err = unsafe { rio_make_ipv4_tcp_server_socket(ipv4_addr, port, &mut fd) };
+  match libc::errno(err) {
+    Err(e) => Err(e),
+    Ok(()) => Ok(fd),
+  }
 }
