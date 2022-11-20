@@ -1,16 +1,19 @@
 #![warn(clippy::pedantic)]
 #![allow(
   clippy::similar_names,
+  clippy::missing_safety_doc,
   clippy::missing_panics_doc,
   clippy::cast_ptr_alignment,
   clippy::module_name_repetitions,
-  clippy::missing_errors_doc
+  clippy::missing_errors_doc,
+  clippy::match_wildcard_for_single_variants
 )]
 #![allow(non_camel_case_types)]
 
 pub mod ip;
 pub mod libc;
 pub mod liburing;
+pub mod op;
 pub mod time;
 // pub mod probe;
 
@@ -73,13 +76,13 @@ impl std::future::Future for WakerFuture {
   }
 }
 
-struct FdFutureSharedState {
-  pub done: bool,
-  pub fd: i32,
-  pub res: i32,
-  pub task: Option<*mut Task>,
-  pub disarmed: bool,
-}
+// struct FdFutureSharedState {
+//   pub done: bool,
+//   pub fd: i32,
+//   pub res: i32,
+//   pub task: Option<*mut Task>,
+//   pub disarmed: bool,
+// }
 
 struct IoContextState {
   ring: *mut liburing::io_uring,
@@ -220,10 +223,10 @@ impl IoContext {
 
         p
       } else {
-        let p = p.cast::<std::cell::UnsafeCell<FdFutureSharedState>>();
-        let cqe_state = unsafe { std::rc::Rc::from_raw(p) };
+        let p = p.cast::<op::FdStateImpl>();
+        let fds = unsafe { op::FdState::from_raw(p) };
+        let p = fds.get();
 
-        let p: *mut FdFutureSharedState = unsafe { (*std::rc::Rc::as_ptr(&cqe_state)).get() };
         unsafe {
           (*p).done = true;
           (*p).res = res;
@@ -277,19 +280,23 @@ impl Executor {
     let state = unsafe { &mut *self.get_state() };
     let taskp = unsafe { task.as_mut().get_unchecked_mut() as *mut _ };
 
-    let statep = std::rc::Rc::new(std::cell::UnsafeCell::new(FdFutureSharedState {
-      done: false,
-      fd: -1,
-      res: -1,
-      task: Some(taskp),
-      disarmed: false,
-    }));
+    // let statep = std::rc::Rc::new(std::cell::UnsafeCell::new(FdFutureSharedState {
+    //   done: false,
+    //   fd: -1,
+    //   res: -1,
+    //   task: Some(taskp),
+    //   disarmed: false,
+    // }));
+
+    let fds = op::FdState::new(-1, op::Op::Null);
+    let p = fds.get();
+    unsafe { (*p).task = Some(taskp) };
 
     let ring = state.ring;
     let sqe = unsafe { liburing::make_sqe(ring) };
-    let user_data = std::rc::Rc::into_raw(statep).cast::<libc::c_void>();
+    let user_data = fds.into_raw().cast::<libc::c_void>();
 
-    unsafe { liburing::io_uring_sqe_set_data(sqe, user_data as *mut _) };
+    unsafe { liburing::io_uring_sqe_set_data(sqe, user_data) };
     unsafe { liburing::io_uring_prep_nop(sqe) };
     unsafe { liburing::io_uring_submit(ring) };
 
