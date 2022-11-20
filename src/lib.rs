@@ -76,14 +76,6 @@ impl std::future::Future for WakerFuture {
   }
 }
 
-// struct FdFutureSharedState {
-//   pub done: bool,
-//   pub fd: i32,
-//   pub res: i32,
-//   pub task: Option<*mut Task>,
-//   pub disarmed: bool,
-// }
-
 struct IoContextState {
   ring: *mut liburing::io_uring,
   task_ctx: Option<*mut Task>,

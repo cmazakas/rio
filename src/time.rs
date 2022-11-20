@@ -93,6 +93,12 @@ impl<'a> std::future::Future for TimerFuture<'a> {
         return std::task::Poll::Ready(libc::errno(e));
       }
 
+      let exp = match unsafe { &(*p).op } {
+        rio::op::Op::Timer(ref ts) => ts.buf,
+        _ => panic!("The number of expirations for a TimerFuture is strictly one as the buffer is allocated in tandem with the task metadata"),
+      };
+      assert_eq!(exp, 1);
+
       return std::task::Poll::Ready(Ok(()));
     }
 
@@ -115,7 +121,7 @@ impl<'a> std::future::Future for TimerFuture<'a> {
     let ring = ioc_state.ring;
     let sqe = unsafe { rio::liburing::make_sqe(ring) };
     let buf = match unsafe { &mut (*p).op } {
-      rio::op::Op::Timer(ts) => std::ptr::addr_of_mut!(ts.buf).cast::<rio::libc::c_void>(),
+      rio::op::Op::Timer(ref mut ts) => std::ptr::addr_of_mut!(ts.buf).cast::<rio::libc::c_void>(),
       _ => panic!("invalid op type in TimerFuture"),
     };
 
