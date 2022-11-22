@@ -1,3 +1,5 @@
+use crate as rio;
+
 #[derive(Clone)]
 pub struct FdState {
   p: std::rc::Rc<std::cell::UnsafeCell<FdStateImpl>>,
@@ -18,10 +20,22 @@ pub struct FdStateImplImpl {}
 pub enum Op {
   Null,
   Timer(TimerState),
+  Accept(AcceptState),
+  Connect(ConnectState),
 }
 
 pub struct TimerState {
   pub buf: u64,
+}
+
+#[derive(Clone)]
+pub struct AcceptState {
+  pub addr_in: rio::ip::tcp::sockaddr_in,
+  pub addr_len: u32,
+}
+
+pub struct ConnectState {
+  pub addr_in: rio::ip::tcp::sockaddr_in,
 }
 
 impl FdState {

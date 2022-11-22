@@ -1,3 +1,5 @@
+use crate as rio;
+
 #[repr(u8)]
 pub enum c_void {
   _x1,
@@ -7,6 +9,8 @@ extern "C" {
   pub fn close(fd: i32) -> i32;
   pub fn errno_to_int(e: i32) -> i32;
   pub fn write(fd: i32, buf: *const c_void, count: usize);
+  pub fn rio_sockaddr_in_test(addr: rio::ip::tcp::sockaddr_in) -> rio::ip::tcp::sockaddr_in;
+  pub fn rio_make_sockaddr_in(ipv4_addr: u32, port: u16) -> rio::ip::tcp::sockaddr_in;
 }
 
 pub enum Errno {

@@ -1,6 +1,12 @@
 extern crate rio;
 
 #[test]
+fn sockaddr_in_ffi_check() {
+  let addr = rio::ip::tcp::sockaddr_in::default();
+  let _addr2 = unsafe { rio::libc::rio_sockaddr_in_test(addr) };
+}
+
+#[test]
 fn tcp_acceptor() {
   static mut WAS_RUN: bool = false;
 

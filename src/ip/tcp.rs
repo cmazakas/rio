@@ -1,5 +1,20 @@
 use crate as rio;
 
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct sockaddr_in {
+  sin_family: u16,
+  sin_port: u16,
+  sin_addr: in_addr,
+  _sin_zero: [u8; 8],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct in_addr {
+  s_addr: u32,
+}
+
 pub struct Acceptor {
   fd: i32,
   ex: rio::Executor,
@@ -40,8 +55,16 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
       let sqe = unsafe { rio::liburing::make_sqe(ring) };
       let user_data = self.fds.clone().into_raw().cast::<rio::libc::c_void>();
 
+      let (addr, addrlen) = match unsafe { &mut (*p).op } {
+        rio::op::Op::Accept(ref mut s) => (
+          std::ptr::addr_of_mut!(s.addr_in),
+          std::ptr::addr_of_mut!(s.addr_len),
+        ),
+        _ => panic!("incorrect op type specified for the AcceptFuture"),
+      };
+
       unsafe { rio::liburing::io_uring_sqe_set_data(sqe, user_data) };
-      unsafe { rio::liburing::io_uring_prep_accept(sqe, fd) };
+      unsafe { rio::liburing::io_uring_prep_accept(sqe, fd, addr, addrlen) };
       unsafe { rio::liburing::io_uring_submit(ring) };
       return std::task::Poll::Pending;
     }
@@ -54,6 +77,15 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
     if fd < 0 {
       std::task::Poll::Ready(Err(rio::libc::errno(-fd).unwrap_err()))
     } else {
+      // let addr = match unsafe { &mut (*p).op } {
+      //   rio::op::Op::Accept(ref mut s) => s.addr_in,
+      //   _ => panic!("incorrect op type specified for the AcceptFuture"),
+      // };
+      // println!(
+      //   "accepted tcp connection on this addr: {:?}:{}",
+      //   addr.sin_addr.s_addr.to_le_bytes(),
+      //   addr.sin_port.to_be()
+      // );
       std::task::Poll::Ready(Ok(fd))
     }
   }
@@ -87,7 +119,13 @@ impl Acceptor {
 
   pub fn async_accept(&mut self) -> AcceptFuture {
     assert!(self.fd > 0);
-    let fds = rio::op::FdState::new(self.fd, rio::op::Op::Null);
+    let fds = rio::op::FdState::new(
+      self.fd,
+      rio::op::Op::Accept(rio::op::AcceptState {
+        addr_in: rio::ip::tcp::sockaddr_in::default(),
+        addr_len: std::mem::size_of::<rio::ip::tcp::sockaddr_in>() as u32,
+      }),
+    );
 
     AcceptFuture {
       ex: self.ex.clone(),
@@ -106,10 +144,15 @@ impl Drop for Acceptor {
 }
 
 impl Socket {
-  pub fn async_connect(&mut self) -> ConnectFuture {
+  pub fn async_connect(&mut self, ipv4_addr: u32, port: u16) -> ConnectFuture {
     assert_eq!(self.fd, -1);
 
-    let fds = rio::op::FdState::new(self.fd, rio::op::Op::Null);
+    let fds = rio::op::FdState::new(
+      self.fd,
+      rio::op::Op::Connect(rio::op::ConnectState {
+        addr_in: unsafe { rio::libc::rio_make_sockaddr_in(ipv4_addr, port) },
+      }),
+    );
 
     ConnectFuture {
       ex: self.ex.clone(),

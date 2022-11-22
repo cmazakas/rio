@@ -41,9 +41,9 @@ void rio_io_uring_sqe_set_data(struct io_uring_sqe *sqe, void *data)
   io_uring_sqe_set_data(sqe, data);
 }
 
-void rio_io_uring_prep_accept(struct io_uring_sqe *sqe, int fd)
+void rio_io_uring_prep_accept(struct io_uring_sqe *sqe, int fd, struct sockaddr *addr, socklen_t *addrlen)
 {
-  io_uring_prep_accept(sqe, fd, NULL, 0, 0);
+  io_uring_prep_accept(sqe, fd, addr, addrlen, 0);
 }
 
 void rio_io_uring_prep_read(struct io_uring_sqe *sqe,
@@ -432,4 +432,16 @@ int rio_make_ipv4_tcp_server_socket(uint32_t ipv4_addr, uint16_t port, int *cons
 
   *fdp = fd;
   return 0;
+}
+
+struct sockaddr_in rio_sockaddr_in_test(struct sockaddr_in in) { return in; }
+
+struct sockaddr_in rio_make_sockaddr_in(uint32_t ipv4_addr, uint16_t port)
+{
+  struct sockaddr_in addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(port);
+  addr.sin_addr.s_addr = ntohl(ipv4_addr);
+  return addr;
 }

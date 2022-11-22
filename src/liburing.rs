@@ -1,6 +1,6 @@
 #![allow(clippy::missing_safety_doc)]
 
-use crate::libc;
+use crate::{self as rio, libc};
 
 #[repr(C)]
 pub struct io_uring {
@@ -26,7 +26,12 @@ extern "C" {
   fn rio_make_sqe(ring: *mut io_uring) -> *mut io_uring_sqe;
   fn rio_io_uring_sqe_set_data(sqe: *mut io_uring_sqe, data: *mut libc::c_void);
   fn rio_io_uring_submit(ring: *mut io_uring) -> i32;
-  fn rio_io_uring_prep_accept(sqe: *mut io_uring_sqe, fd: i32);
+  fn rio_io_uring_prep_accept(
+    sqe: *mut io_uring_sqe,
+    fd: i32,
+    addr: *mut rio::ip::tcp::sockaddr_in,
+    addrlen: *mut u32,
+  );
   fn rio_io_uring_prep_read(
     sqe: *mut io_uring_sqe,
     fd: i32,
@@ -64,8 +69,13 @@ pub unsafe fn io_uring_sqe_set_data(sqe: *mut io_uring_sqe, data: *mut libc::c_v
   rio_io_uring_sqe_set_data(sqe, data);
 }
 
-pub unsafe fn io_uring_prep_accept(sqe: *mut io_uring_sqe, fd: i32) {
-  rio_io_uring_prep_accept(sqe, fd);
+pub unsafe fn io_uring_prep_accept(
+  sqe: *mut io_uring_sqe,
+  fd: i32,
+  addr: *mut rio::ip::tcp::sockaddr_in,
+  addrlen: *mut u32,
+) {
+  rio_io_uring_prep_accept(sqe, fd, addr, addrlen);
 }
 
 pub unsafe fn io_uring_prep_read(

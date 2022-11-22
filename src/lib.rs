@@ -6,7 +6,8 @@
   clippy::cast_ptr_alignment,
   clippy::module_name_repetitions,
   clippy::missing_errors_doc,
-  clippy::match_wildcard_for_single_variants
+  clippy::match_wildcard_for_single_variants,
+  clippy::cast_possible_truncation
 )]
 #![allow(non_camel_case_types)]
 
