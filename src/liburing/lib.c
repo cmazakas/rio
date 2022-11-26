@@ -46,6 +46,14 @@ void rio_io_uring_prep_accept(struct io_uring_sqe *sqe, int fd, struct sockaddr 
   io_uring_prep_accept(sqe, fd, addr, addrlen, 0);
 }
 
+void rio_io_uring_prep_connect(struct io_uring_sqe *sqe,
+                               int sockfd,
+                               const struct sockaddr *addr,
+                               socklen_t addrlen)
+{
+  io_uring_prep_connect(sqe, sockfd, addr, addrlen);
+}
+
 void rio_io_uring_prep_read(struct io_uring_sqe *sqe,
                             int fd, void *buf, unsigned nbytes, off_t offset)
 {
@@ -398,6 +406,18 @@ int errno_to_int(int const e)
   default:
     return -1337;
   }
+}
+
+int rio_make_ipv4_tcp_socket(int *fdp)
+{
+  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (-1 == fd)
+  {
+    return errno;
+  }
+
+  *fdp = fd;
+  return 0;
 }
 
 int rio_make_ipv4_tcp_server_socket(uint32_t ipv4_addr, uint16_t port, int *const fdp)

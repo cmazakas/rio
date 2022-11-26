@@ -23,13 +23,13 @@ fn tcp_acceptor() {
     })
   });
 
-  // ioc.post({
-  //   let ex = ioc.get_executor();
-  //   Box::pin(async {
-  //     // let mut client = rio::ip::tcp::Socket::new(ex);
-  //     // client.async_connect();
-  //   })
-  // });
+  ioc.post({
+    let ex = ioc.get_executor();
+    Box::pin(async {
+      let mut client = rio::ip::tcp::Socket::new(ex);
+      client.async_connect(0x7f000001, 3300).await.unwrap();
+    })
+  });
 
   ioc.run();
   assert!(unsafe { WAS_RUN });

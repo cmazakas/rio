@@ -97,6 +97,48 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
     self: std::pin::Pin<&mut Self>,
     _cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Self::Output> {
+    let p = self.fds.get();
+    let fds = unsafe { &mut *p };
+    if !fds.initiated {
+      fds.initiated = true;
+
+      let sockfd = fds.fd;
+
+      let ioc_state = unsafe { &mut *self.ex.get_state() };
+      fds.task = Some(ioc_state.task_ctx.unwrap());
+
+      let ring = ioc_state.ring;
+      let sqe = unsafe { rio::liburing::make_sqe(ring) };
+
+      let (addr, addrlen) = match fds.op {
+        rio::op::Op::Connect(ref s) => (
+          std::ptr::addr_of!(s.addr_in),
+          std::mem::size_of::<rio::ip::tcp::sockaddr_in>() as u32,
+        ),
+        _ => panic!(""),
+      };
+
+      let user_data = self.fds.clone().into_raw().cast::<rio::libc::c_void>();
+      unsafe { rio::liburing::io_uring_sqe_set_data(sqe, user_data) };
+
+      unsafe {
+        rio::liburing::io_uring_prep_connect(
+          sqe,
+          sockfd,
+          addr.cast::<rio::libc::sockaddr>(),
+          addrlen,
+        );
+      }
+
+      unsafe { rio::liburing::io_uring_submit(ring) };
+
+      return std::task::Poll::Pending;
+    }
+
+    if !fds.done {
+      return std::task::Poll::Pending;
+    }
+
     std::task::Poll::Ready(Ok(()))
   }
 }
@@ -143,10 +185,24 @@ impl Drop for Acceptor {
   }
 }
 
-impl Socket {
-  pub fn async_connect(&mut self, ipv4_addr: u32, port: u16) -> ConnectFuture {
-    assert_eq!(self.fd, -1);
+impl Drop for Socket {
+  fn drop(&mut self) {
+    if self.fd != -1 {
+      unsafe { rio::libc::close(self.fd) };
+    }
+  }
+}
 
+impl Socket {
+  #[must_use]
+  pub fn new(ex: rio::Executor) -> Self {
+    Self {
+      fd: rio::liburing::make_ipv4_tcp_socket().unwrap(),
+      ex,
+    }
+  }
+
+  pub fn async_connect(&mut self, ipv4_addr: u32, port: u16) -> ConnectFuture {
     let fds = rio::op::FdState::new(
       self.fd,
       rio::op::Op::Connect(rio::op::ConnectState {

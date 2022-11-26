@@ -32,6 +32,14 @@ extern "C" {
     addr: *mut rio::ip::tcp::sockaddr_in,
     addrlen: *mut u32,
   );
+
+  fn rio_io_uring_prep_connect(
+    sqe: *mut io_uring_sqe,
+    sockfd: i32,
+    addr: *const rio::libc::sockaddr,
+    addrlen: u32,
+  );
+
   fn rio_io_uring_prep_read(
     sqe: *mut io_uring_sqe,
     fd: i32,
@@ -50,6 +58,7 @@ extern "C" {
 
   fn rio_make_pipe(pipefd: *mut i32) -> i32;
   fn rio_make_ipv4_tcp_server_socket(ipv4_addr: u32, port: u16, fdp: *mut i32) -> i32;
+  fn rio_make_ipv4_tcp_socket(fdp: *mut i32) -> i32;
 }
 
 #[must_use]
@@ -76,6 +85,15 @@ pub unsafe fn io_uring_prep_accept(
   addrlen: *mut u32,
 ) {
   rio_io_uring_prep_accept(sqe, fd, addr, addrlen);
+}
+
+pub unsafe fn io_uring_prep_connect(
+  sqe: *mut io_uring_sqe,
+  sockfd: i32,
+  addr: *const rio::libc::sockaddr,
+  addrlen: u32,
+) {
+  rio_io_uring_prep_connect(sqe, sockfd, addr, addrlen);
 }
 
 pub unsafe fn io_uring_prep_read(
@@ -134,6 +152,15 @@ pub fn make_pipe(pipefd: &mut [i32; 2]) -> i32 {
 pub fn make_ipv4_tcp_server_socket(ipv4_addr: u32, port: u16) -> Result<i32, libc::Errno> {
   let mut fd = -1;
   let err = unsafe { rio_make_ipv4_tcp_server_socket(ipv4_addr, port, &mut fd) };
+  match libc::errno(err) {
+    Err(e) => Err(e),
+    Ok(()) => Ok(fd),
+  }
+}
+
+pub fn make_ipv4_tcp_socket() -> Result<i32, libc::Errno> {
+  let mut fd = -1;
+  let err = unsafe { rio_make_ipv4_tcp_socket(&mut fd) };
   match libc::errno(err) {
     Err(e) => Err(e),
     Ok(()) => Ok(fd),

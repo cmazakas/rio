@@ -5,6 +5,11 @@ pub enum c_void {
   _x1,
 }
 
+#[repr(C)]
+pub struct sockaddr {
+  _data: [u8; 0],
+}
+
 extern "C" {
   pub fn close(fd: i32) -> i32;
   pub fn errno_to_int(e: i32) -> i32;
