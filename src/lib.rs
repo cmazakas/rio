@@ -217,12 +217,16 @@ impl IoContext {
         p
       } else {
         let p = p.cast::<op::FdStateImpl>();
+        println!("the following task came in: {:?}", p);
+
         let fds = unsafe { op::FdState::from_raw(p) };
         let p = fds.get();
 
         unsafe {
           (*p).done = true;
           (*p).res = res;
+
+          println!("res is: {res}");
         }
         unsafe { (*p).task.take().unwrap() }
       };

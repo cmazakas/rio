@@ -34,11 +34,40 @@ pub struct AcceptFuture<'a> {
 pub struct ConnectFuture<'a> {
   ex: rio::Executor,
   fds: rio::op::FdState,
-  s: &'a mut Socket,
+  _m: std::marker::PhantomData<&'a mut Socket>,
+}
+
+impl<'a> Drop for AcceptFuture<'a> {
+  fn drop(&mut self) {
+    let p = self.fds.get();
+    if unsafe { (*p).initiated && !(*p).done } {
+      println!("cancelling the task associated with this pointer: {:?}", p);
+      unsafe {
+        let ring = (*self.ex.get_state()).ring;
+        let sqe = rio::liburing::make_sqe(ring);
+        rio::liburing::io_uring_prep_cancel(sqe, p.cast::<rio::libc::c_void>(), 0);
+        rio::liburing::io_uring_submit((*self.ex.get_state()).ring);
+      }
+    }
+  }
+}
+
+impl<'a> Drop for ConnectFuture<'a> {
+  fn drop(&mut self) {
+    let p = self.fds.get();
+    if unsafe { (*p).initiated && !(*p).done } {
+      unsafe {
+        let ring = (*self.ex.get_state()).ring;
+        let sqe = rio::liburing::make_sqe(ring);
+        rio::liburing::io_uring_prep_cancel(sqe, p.cast::<rio::libc::c_void>(), 0);
+        rio::liburing::io_uring_submit((*self.ex.get_state()).ring);
+      }
+    }
+  }
 }
 
 impl<'a> std::future::Future for AcceptFuture<'a> {
-  type Output = Result<i32, rio::libc::Errno>;
+  type Output = Result<Socket, rio::libc::Errno>;
   fn poll(
     self: std::pin::Pin<&mut Self>,
     _cx: &mut std::task::Context<'_>,
@@ -46,6 +75,7 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
     let p = self.fds.get();
 
     if !unsafe { (*p).initiated } {
+      println!("starting async aceept on {:?}", p);
       unsafe { (*p).initiated = true };
       let fd = unsafe { (*p).fd };
       let ioc_state = unsafe { &mut *self.ex.get_state() };
@@ -86,7 +116,7 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
       //   addr.sin_addr.s_addr.to_le_bytes(),
       //   addr.sin_port.to_be()
       // );
-      std::task::Poll::Ready(Ok(fd))
+      std::task::Poll::Ready(Ok(unsafe { Socket::from_raw(self.ex.clone(), fd) }))
     }
   }
 }
@@ -202,6 +232,11 @@ impl Socket {
     }
   }
 
+  #[must_use]
+  pub unsafe fn from_raw(ex: rio::Executor, fd: i32) -> Self {
+    Self { fd, ex }
+  }
+
   pub fn async_connect(&mut self, ipv4_addr: u32, port: u16) -> ConnectFuture {
     let fds = rio::op::FdState::new(
       self.fd,
@@ -213,7 +248,7 @@ impl Socket {
     ConnectFuture {
       ex: self.ex.clone(),
       fds,
-      s: self,
+      _m: std::marker::PhantomData,
     }
   }
 }
