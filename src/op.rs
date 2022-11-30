@@ -11,7 +11,7 @@ pub struct FdStateImpl {
   pub disarmed: bool,
   pub fd: i32,
   pub res: i32,
-  pub task: Option<*mut dyn std::future::Future<Output = ()>>,
+  pub task: Option<*mut rio::Task>,
   pub op: Op,
 }
 
