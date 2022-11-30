@@ -158,6 +158,16 @@ impl IoContext {
       }
     }
 
+    struct TaskGuard<'a> {
+      tasks: &'a mut std::collections::VecDeque<std::pin::Pin<Box<Task>>>,
+    }
+
+    impl<'a> Drop for TaskGuard<'a> {
+      fn drop(&mut self) {
+        self.tasks.clear();
+      }
+    }
+
     let mut pipefd = [-1_i32; 2];
     assert!(
       liburing::make_pipe(&mut pipefd) != -1,
@@ -186,7 +196,11 @@ impl IoContext {
       liburing::io_uring_submit(ring);
     };
 
-    while !state.tasks.is_empty() {
+    let task_guard = TaskGuard {
+      tasks: &mut state.tasks,
+    };
+
+    while !task_guard.tasks.is_empty() {
       let mut res = -1;
       let cqe = unsafe { liburing::io_uring_wait_cqe(ring, &mut res) };
       assert!(!cqe.is_null());
@@ -231,7 +245,7 @@ impl IoContext {
         unsafe { (*p).task.take().unwrap() }
       };
 
-      let mut it = state.tasks.iter_mut();
+      let mut it = task_guard.tasks.iter_mut();
       let idx = match it.position(|p| {
         (std::ptr::addr_of!(**p) as *const dyn std::future::Future<Output = ()>).cast::<()>()
           == taskp.cast::<()>()
@@ -254,7 +268,7 @@ impl IoContext {
       let mut cx = std::task::Context::from_waker(&pipe_waker);
 
       if task.poll(&mut cx).is_ready() {
-        drop(state.tasks.remove(idx));
+        drop(task_guard.tasks.remove(idx));
       }
     }
 
