@@ -169,7 +169,11 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
       return std::task::Poll::Pending;
     }
 
-    std::task::Poll::Ready(Ok(()))
+    if fds.res < 0 {
+      std::task::Poll::Ready(rio::libc::errno(-fds.res))
+    } else {
+      std::task::Poll::Ready(Ok(()))
+    }
   }
 }
 

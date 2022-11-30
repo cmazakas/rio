@@ -41,6 +41,40 @@ fn tcp_acceptor() {
 }
 
 #[test]
+fn econnrefused_connect_future() {
+  static mut NUM_RUNS: i32 = 0;
+
+  let mut ioc = rio::IoContext::new();
+  let ex = ioc.get_executor();
+
+  let mut timer = rio::time::Timer::new(ex.clone());
+  ioc.post(Box::pin(async move {
+    timer.expires_after(std::time::Duration::from_millis(1500));
+    timer.async_wait().await.unwrap();
+
+    unsafe { NUM_RUNS += 1 };
+  }));
+
+  let mut client = rio::ip::tcp::Socket::new(ex);
+  ioc.post(Box::pin(async move {
+    let r = client.async_connect(0x7f000001, 3301).await;
+
+    match r {
+      Err(e) => match e {
+        rio::libc::Errno::ECONNREFUSED => {}
+        _ => panic!("incorrect errno value, should be ECONNREFUSED"),
+      },
+      _ => panic!("expected an error when connecting"),
+    }
+
+    unsafe { NUM_RUNS += 1 };
+  }));
+
+  ioc.run();
+  assert_eq!(unsafe { NUM_RUNS }, 2);
+}
+
+#[test]
 fn drop_accept_pending() {
   static mut NUM_RUNS: i32 = 0;
 
@@ -49,7 +83,7 @@ fn drop_accept_pending() {
 
   ioc.post(Box::pin(async {
     let mut acceptor = rio::ip::tcp::Acceptor::new(ex.clone());
-    acceptor.listen(0x7f000001, 3301).unwrap();
+    acceptor.listen(0x7f000001, 3302).unwrap();
     let mut f = acceptor.async_accept();
 
     let waker = std::sync::Arc::new(NopWaker {}).into();
