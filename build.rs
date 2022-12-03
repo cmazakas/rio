@@ -8,7 +8,7 @@ fn main() {
   let library_dir = std::env::var("RIO_LIBURING_LIBRARY_DIR").expect(msg);
 
   println!("cargo:rustc-link-search={library_dir}");
-  println!("cargo:rustc-link-lib=static=uring");
+  println!("cargo:rustc-link-lib=static=uring-ffi");
 
   println!("cargo:rerun-if-changed=src/liburing/lib.c");
   cc::Build::new()

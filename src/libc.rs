@@ -297,6 +297,7 @@ impl std::fmt::Debug for Errno {
     match self {
       Self::ECANCELED => f.write_str("ecanceled"),
       Self::EADDRNOTAVAIL => f.write_str("eaddrnotavail"),
+      Self::EINVAL => f.write_str("einval"),
       Self::RIO_UNKNOWN => f.write_str("encountered an unknown error"),
       _ => f.write_str("Unsupported error code"),
     }

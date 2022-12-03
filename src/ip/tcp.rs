@@ -41,7 +41,6 @@ impl<'a> Drop for AcceptFuture<'a> {
   fn drop(&mut self) {
     let p = self.fds.get();
     if unsafe { (*p).initiated && !(*p).done } {
-      println!("cancelling the task associated with this pointer: {:?}", p);
       unsafe {
         let ring = (*self.ex.get_state()).ring;
         let sqe = rio::liburing::make_sqe(ring);
@@ -75,7 +74,6 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
     let p = self.fds.get();
 
     if !unsafe { (*p).initiated } {
-      println!("starting async aceept on {:?}", p);
       unsafe { (*p).initiated = true };
       let fd = unsafe { (*p).fd };
       let ioc_state = unsafe { &mut *self.ex.get_state() };
@@ -94,7 +92,7 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
       };
 
       unsafe { rio::liburing::io_uring_sqe_set_data(sqe, user_data) };
-      unsafe { rio::liburing::io_uring_prep_accept(sqe, fd, addr, addrlen) };
+      unsafe { rio::liburing::io_uring_prep_accept(sqe, fd, addr, addrlen, 0) };
       unsafe { rio::liburing::io_uring_submit(ring) };
       return std::task::Poll::Pending;
     }
