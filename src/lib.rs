@@ -201,9 +201,15 @@ impl IoContext {
     };
 
     while !task_guard.tasks.is_empty() {
-      let mut res = -1;
-      let cqe = unsafe { liburing::io_uring_wait_cqe(ring, &mut res) };
+      let mut cqe = std::ptr::null_mut();
+      let e = unsafe { liburing::io_uring_wait_cqe(ring, &mut cqe) };
+      if e != 0 {
+        assert!(e < 0);
+        libc::errno(-e).unwrap();
+      }
       assert!(!cqe.is_null());
+
+      let res = unsafe { (*cqe).res };
 
       let _guard = CQESeenGuard { ring, cqe };
       let p = unsafe { liburing::io_uring_cqe_get_data(cqe) };
