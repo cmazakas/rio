@@ -90,7 +90,7 @@ impl<'a> std::future::Future for TimerFuture<'a> {
 
       if unsafe { (*p).res < 0 } {
         let e = unsafe { -(*p).res };
-        return std::task::Poll::Ready(libc::errno(e));
+        return std::task::Poll::Ready(Err(libc::errno(e)));
       }
 
       let exp = match unsafe { &(*p).op } {
@@ -121,7 +121,9 @@ impl<'a> std::future::Future for TimerFuture<'a> {
     let ring = ioc_state.ring;
     let sqe = unsafe { rio::liburing::make_sqe(ring) };
     let buf = match unsafe { &mut (*p).op } {
-      rio::op::Op::Timer(ref mut ts) => std::ptr::addr_of_mut!(ts.buf).cast::<rio::libc::c_void>(),
+      rio::op::Op::Timer(ref mut ts) => {
+        std::ptr::addr_of_mut!(ts.buf).cast::<rio::libc::c_void>()
+      }
       _ => panic!("invalid op type in TimerFuture"),
     };
 
@@ -165,7 +167,10 @@ impl Timer {
   pub fn async_wait(&mut self) -> TimerFuture {
     let fd = self.fd;
 
-    let fds = rio::op::FdState::new(fd, rio::op::Op::Timer(rio::op::TimerState { buf: 0 }));
+    let fds = rio::op::FdState::new(
+      fd,
+      rio::op::Op::Timer(rio::op::TimerState { buf: 0 }),
+    );
     TimerFuture::new(self.ex.clone(), fds, self.dur, std::marker::PhantomData)
   }
 }

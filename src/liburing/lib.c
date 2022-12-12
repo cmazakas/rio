@@ -136,10 +136,10 @@ int rio_make_pipe(int pipefd[2])
 
 int errno_to_int(int const e)
 {
+  assert(e > 0);
+
   switch (e)
   {
-  case 0:
-    return 0;
   case EPERM:
     return -1;
   case ENOENT:
