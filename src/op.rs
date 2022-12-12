@@ -22,6 +22,8 @@ pub enum Op {
   Timer(TimerState),
   Accept(AcceptState),
   Connect(ConnectState),
+  Read(ReadState),
+  Write(WriteState),
 }
 
 pub struct TimerState {
@@ -36,6 +38,14 @@ pub struct AcceptState {
 
 pub struct ConnectState {
   pub addr_in: rio::ip::tcp::sockaddr_in,
+}
+
+pub struct ReadState {
+  pub buf: Option<Vec<u8>>,
+}
+
+pub struct WriteState {
+  pub buf: Option<Vec<u8>>,
 }
 
 impl FdState {

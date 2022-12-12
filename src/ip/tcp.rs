@@ -37,31 +37,57 @@ pub struct ConnectFuture<'a> {
   _m: std::marker::PhantomData<&'a mut Socket>,
 }
 
+pub struct ReadFuture<'a> {
+  ex: rio::Executor,
+  fds: rio::op::FdState,
+  _m: std::marker::PhantomData<&'a mut Socket>,
+}
+
+pub struct WriteFuture<'a> {
+  ex: rio::Executor,
+  fds: rio::op::FdState,
+  _m: std::marker::PhantomData<&'a mut Socket>,
+}
+
+unsafe fn drop_cancel(
+  p: *mut rio::op::FdStateImpl,
+  ioc: *mut rio::IoContextState,
+) {
+  if (*p).initiated && !(*p).done {
+    let ring = (*ioc).ring;
+    unsafe {
+      let sqe = rio::liburing::make_sqe(ring);
+      rio::liburing::io_uring_prep_cancel(
+        sqe,
+        p.cast::<rio::libc::c_void>(),
+        0,
+      );
+      rio::liburing::io_uring_submit(ring);
+    }
+  }
+}
+
 impl<'a> Drop for AcceptFuture<'a> {
   fn drop(&mut self) {
-    let p = self.fds.get();
-    if unsafe { (*p).initiated && !(*p).done } {
-      unsafe {
-        let ring = (*self.ex.get_state()).ring;
-        let sqe = rio::liburing::make_sqe(ring);
-        rio::liburing::io_uring_prep_cancel(sqe, p.cast::<rio::libc::c_void>(), 0);
-        rio::liburing::io_uring_submit((*self.ex.get_state()).ring);
-      }
-    }
+    unsafe { drop_cancel(self.fds.get(), self.ex.get_state()) };
   }
 }
 
 impl<'a> Drop for ConnectFuture<'a> {
   fn drop(&mut self) {
-    let p = self.fds.get();
-    if unsafe { (*p).initiated && !(*p).done } {
-      unsafe {
-        let ring = (*self.ex.get_state()).ring;
-        let sqe = rio::liburing::make_sqe(ring);
-        rio::liburing::io_uring_prep_cancel(sqe, p.cast::<rio::libc::c_void>(), 0);
-        rio::liburing::io_uring_submit((*self.ex.get_state()).ring);
-      }
-    }
+    unsafe { drop_cancel(self.fds.get(), self.ex.get_state()) };
+  }
+}
+
+impl<'a> Drop for ReadFuture<'a> {
+  fn drop(&mut self) {
+    unsafe { drop_cancel(self.fds.get(), self.ex.get_state()) };
+  }
+}
+
+impl<'a> Drop for WriteFuture<'a> {
+  fn drop(&mut self) {
+    unsafe { drop_cancel(self.fds.get(), self.ex.get_state()) };
   }
 }
 
@@ -103,7 +129,7 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
 
     let fd = unsafe { (*p).res };
     if fd < 0 {
-      std::task::Poll::Ready(Err(rio::libc::errno(-fd).unwrap_err()))
+      std::task::Poll::Ready(Err(rio::libc::errno(-fd)))
     } else {
       // let addr = match unsafe { &mut (*p).op } {
       //   rio::op::Op::Accept(ref mut s) => s.addr_in,
@@ -114,7 +140,9 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
       //   addr.sin_addr.s_addr.to_le_bytes(),
       //   addr.sin_port.to_be()
       // );
-      std::task::Poll::Ready(Ok(unsafe { Socket::from_raw(self.ex.clone(), fd) }))
+      std::task::Poll::Ready(Ok(unsafe {
+        Socket::from_raw(self.ex.clone(), fd)
+      }))
     }
   }
 }
@@ -168,10 +196,147 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
     }
 
     if fds.res < 0 {
-      std::task::Poll::Ready(rio::libc::errno(-fds.res))
+      std::task::Poll::Ready(Err(rio::libc::errno(-fds.res)))
     } else {
       std::task::Poll::Ready(Ok(()))
     }
+  }
+}
+
+impl<'a> std::future::Future for ReadFuture<'a> {
+  type Output = Result<Vec<u8>, rio::libc::Errno>;
+  fn poll(
+    self: std::pin::Pin<&mut Self>,
+    _cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Self::Output> {
+    let p = self.fds.get();
+    let fds = unsafe { &mut *p };
+
+    if fds.done {
+      if fds.res < 0 {
+        return std::task::Poll::Ready(Err(rio::libc::errno(-fds.res)));
+      }
+
+      let mut buf = match fds.op {
+        rio::op::Op::Read(ref mut s) => s.buf.take().unwrap(),
+        _ => {
+          panic!("Read op was completed but the internal Op is an invalid type")
+        }
+      };
+
+      #[allow(clippy::cast_sign_loss)]
+      unsafe {
+        buf.set_len(buf.len() + fds.res as usize);
+      }
+
+      return std::task::Poll::Ready(Ok(buf));
+    }
+
+    if fds.initiated {
+      return std::task::Poll::Pending;
+    }
+
+    fds.initiated = true;
+
+    let sockfd = fds.fd;
+
+    let ioc_state = unsafe { &mut *self.ex.get_state() };
+    fds.task = Some(ioc_state.task_ctx.unwrap());
+
+    let ring = ioc_state.ring;
+    let sqe = unsafe { rio::liburing::make_sqe(ring) };
+
+    let (buf, nbytes, offset) = match fds.op {
+      rio::op::Op::Read(ref mut s) => match s.buf {
+        Some(ref mut b) => (b.as_mut_ptr(), b.capacity(), b.len()),
+        _ => panic!("In ReadFuture, buf was null when it should've been Some"),
+      },
+      _ => panic!("Incorrect operation type in ReadFuture"),
+    };
+
+    let user_data = self.fds.clone().into_raw().cast::<rio::libc::c_void>();
+    unsafe { rio::liburing::io_uring_sqe_set_data(sqe, user_data) };
+
+    unsafe {
+      rio::liburing::io_uring_prep_read(
+        sqe,
+        sockfd,
+        buf.cast::<rio::libc::c_void>(),
+        nbytes as u32,
+        offset as u64,
+      );
+    }
+
+    unsafe { rio::liburing::io_uring_submit(ring) };
+
+    std::task::Poll::Pending
+  }
+}
+
+impl<'a> std::future::Future for WriteFuture<'a> {
+  type Output = Result<Vec<u8>, rio::libc::Errno>;
+  fn poll(
+    self: std::pin::Pin<&mut Self>,
+    _cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Self::Output> {
+    let p = self.fds.get();
+    let fds = unsafe { &mut *p };
+
+    if fds.done {
+      if fds.res < 0 {
+        return std::task::Poll::Ready(Err(rio::libc::errno(-fds.res)));
+      }
+
+      let buf = match fds.op {
+        rio::op::Op::Write(ref mut s) => s.buf.take().unwrap(),
+        _ => {
+          panic!(
+            "Write op was completed but the internal Op is an invalid type"
+          )
+        }
+      };
+
+      return std::task::Poll::Ready(Ok(buf));
+    }
+
+    if fds.initiated {
+      return std::task::Poll::Pending;
+    }
+
+    fds.initiated = true;
+
+    let sockfd = fds.fd;
+
+    let ioc_state = unsafe { &mut *self.ex.get_state() };
+    fds.task = Some(ioc_state.task_ctx.unwrap());
+
+    let ring = ioc_state.ring;
+    let sqe = unsafe { rio::liburing::make_sqe(ring) };
+
+    let (buf, nbytes, offset) = match fds.op {
+      rio::op::Op::Write(ref mut s) => match s.buf {
+        Some(ref mut b) => (b.as_ptr(), b.len(), 0_u64),
+        _ => panic!("In WriteFuture, buf was null when it should've been Some"),
+      },
+      _ => panic!("Incorrect operation type in WriteFuture"),
+    };
+
+    let user_data = self.fds.clone().into_raw().cast::<rio::libc::c_void>();
+    unsafe { rio::liburing::io_uring_sqe_set_data(sqe, user_data) };
+
+    unsafe {
+      rio::liburing::io_uring_prep_write(
+        sqe,
+        sockfd,
+        buf.cast::<rio::libc::c_void>(),
+        nbytes as u32,
+        offset as u64,
+      );
+    }
+
+    unsafe { rio::liburing::io_uring_submit(ring) };
+
+    std::task::Poll::Pending
   }
 }
 
@@ -181,7 +346,11 @@ impl Acceptor {
     Self { fd: -1, ex }
   }
 
-  pub fn listen(&mut self, ipv4_addr: u32, port: u16) -> Result<(), rio::libc::Errno> {
+  pub fn listen(
+    &mut self,
+    ipv4_addr: u32,
+    port: u16,
+  ) -> Result<(), rio::libc::Errno> {
     match rio::liburing::make_ipv4_tcp_server_socket(ipv4_addr, port) {
       Ok(fd) => {
         self.fd = fd;
@@ -248,6 +417,32 @@ impl Socket {
     );
 
     ConnectFuture {
+      ex: self.ex.clone(),
+      fds,
+      _m: std::marker::PhantomData,
+    }
+  }
+
+  pub fn async_read(&mut self, buf: Vec<u8>) -> ReadFuture {
+    let fds = rio::op::FdState::new(
+      self.fd,
+      rio::op::Op::Read(rio::op::ReadState { buf: Some(buf) }),
+    );
+
+    ReadFuture {
+      ex: self.ex.clone(),
+      fds,
+      _m: std::marker::PhantomData,
+    }
+  }
+
+  pub fn async_write(&mut self, buf: Vec<u8>) -> WriteFuture {
+    let fds = rio::op::FdState::new(
+      self.fd,
+      rio::op::Op::Write(rio::op::WriteState { buf: Some(buf) }),
+    );
+
+    WriteFuture {
       ex: self.ex.clone(),
       fds,
       _m: std::marker::PhantomData,

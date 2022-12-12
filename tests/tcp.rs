@@ -17,26 +17,42 @@ fn sockaddr_in_ffi_check() {
 fn tcp_acceptor() {
   static mut NUM_RUNS: i32 = 0;
 
-  let mut ioc = rio::IoContext::new();
-  let ex = ioc.get_executor();
-  ioc.post({
-    let ex = ex.clone();
-    Box::pin(async {
-      let mut acceptor = rio::ip::tcp::Acceptor::new(ex);
-      acceptor.listen(0x7f000001, 3300).unwrap();
-      let _stream = acceptor.async_accept().await.unwrap();
+  async fn server(ex: rio::Executor) {
+    let mut acceptor = rio::ip::tcp::Acceptor::new(ex);
+    acceptor.listen(0x7f000001, 3300).unwrap();
+    let mut stream = acceptor.async_accept().await.unwrap();
 
-      unsafe { NUM_RUNS += 1 };
-    })
-  });
+    let mut buf = vec![0_u8; 4096];
+    unsafe {
+      buf.set_len(0);
+    }
 
-  ioc.post(Box::pin(async {
+    let buf = stream.async_read(buf).await.unwrap();
+
+    assert_eq!(buf.len(), 13);
+    let str = unsafe { std::str::from_utf8_unchecked(&buf[0..buf.len()]) };
+    assert_eq!(str, "Hello, world!");
+
+    unsafe { NUM_RUNS += 1 };
+  }
+
+  async fn client(ex: rio::Executor) {
     let mut client = rio::ip::tcp::Socket::new(ex);
     client.async_connect(0x7f000001, 3300).await.unwrap();
-    unsafe { NUM_RUNS += 1 };
-  }));
 
+    let str = String::from("Hello, world!").into_bytes();
+    client.async_write(str).await.unwrap();
+
+    unsafe { NUM_RUNS += 1 };
+  }
+
+  let mut ioc = rio::IoContext::new();
+  let ex = ioc.get_executor();
+
+  ioc.post(Box::pin(server(ex.clone())));
+  ioc.post(Box::pin(client(ex)));
   ioc.run();
+
   assert_eq!(unsafe { NUM_RUNS }, 2);
 }
 
@@ -89,7 +105,10 @@ fn drop_accept_pending() {
     let waker = std::sync::Arc::new(NopWaker {}).into();
     let mut cx = std::task::Context::from_waker(&waker);
 
-    assert!(unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }.is_pending());
+    assert!(
+      unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }
+        .is_pending()
+    );
 
     let mut timer = rio::time::Timer::new(ex);
     timer.expires_after(std::time::Duration::from_millis(500));
