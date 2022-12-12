@@ -205,7 +205,10 @@ impl IoContext {
       let e = unsafe { liburing::io_uring_wait_cqe(ring, &mut cqe) };
       if e != 0 {
         assert!(e < 0);
-        libc::errno(-e).unwrap();
+        panic!(
+          "waiting internally for the cqe failed with: {:?}",
+          libc::errno(-e)
+        );
       }
       assert!(!cqe.is_null());
 
@@ -253,7 +256,8 @@ impl IoContext {
 
       let mut it = task_guard.tasks.iter_mut();
       let idx = match it.position(|p| {
-        (std::ptr::addr_of!(**p) as *const dyn std::future::Future<Output = ()>).cast::<()>()
+        (std::ptr::addr_of!(**p) as *const dyn std::future::Future<Output = ()>)
+          .cast::<()>()
           == taskp.cast::<()>()
       }) {
         Some(idx) => idx,
