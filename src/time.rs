@@ -1,16 +1,10 @@
-use crate::{self as rio, libc};
+use crate::{self as rio, libc, op::CancelHandle};
 
 pub struct TimerFuture<'a> {
   ex: rio::Executor,
   fds: rio::op::FdState,
   dur: std::time::Duration,
   _m: std::marker::PhantomData<&'a mut Timer>,
-}
-
-#[derive(Clone)]
-pub struct TimerCancel {
-  ex: rio::Executor,
-  fds: rio::op::FdState,
 }
 
 impl<'a> TimerFuture<'a> {
@@ -29,11 +23,8 @@ impl<'a> TimerFuture<'a> {
   }
 
   #[must_use]
-  pub fn get_cancel_handle(&self) -> TimerCancel {
-    TimerCancel {
-      ex: self.ex.clone(),
-      fds: self.fds.clone(),
-    }
+  pub fn get_cancel_handle(&self) -> CancelHandle {
+    CancelHandle::new(self.fds.clone(), self.ex.clone())
   }
 }
 
@@ -51,28 +42,28 @@ impl<'a> Drop for TimerFuture<'a> {
   }
 }
 
-impl TimerCancel {
-  pub fn cancel(self) {
-    unsafe {
-      let p = self.fds.get();
-      if (*p).disarmed {
-        return;
-      }
+// impl TimerCancel {
+//   pub fn cancel(self) {
+//     unsafe {
+//       let p = self.fds.get();
+//       if (*p).disarmed {
+//         return;
+//       }
 
-      let ring = (*self.ex.get_state()).ring;
-      let sqe = rio::liburing::make_sqe(ring);
-      rio::liburing::io_uring_prep_cancel(sqe, p.cast::<libc::c_void>(), 0);
-      rio::liburing::io_uring_submit((*self.ex.get_state()).ring);
-    }
-  }
+//       let ring = (*self.ex.get_state()).ring;
+//       let sqe = rio::liburing::make_sqe(ring);
+//       rio::liburing::io_uring_prep_cancel(sqe, p.cast::<libc::c_void>(), 0);
+//       rio::liburing::io_uring_submit((*self.ex.get_state()).ring);
+//     }
+//   }
 
-  pub fn disarm(&mut self) {
-    unsafe {
-      let p = self.fds.get();
-      (*p).disarmed = true;
-    };
-  }
-}
+//   pub fn disarm(&mut self) {
+//     unsafe {
+//       let p = self.fds.get();
+//       (*p).disarmed = true;
+//     };
+//   }
+// }
 
 impl<'a> std::future::Future for TimerFuture<'a> {
   type Output = Result<(), libc::Errno>;

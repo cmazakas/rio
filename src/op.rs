@@ -15,8 +15,6 @@ pub struct FdStateImpl {
   pub op: Op,
 }
 
-pub struct FdStateImplImpl {}
-
 pub enum Op {
   Null,
   Timer(TimerState),
@@ -77,6 +75,47 @@ impl FdState {
   pub unsafe fn from_raw(p: *mut FdStateImpl) -> Self {
     Self {
       p: std::rc::Rc::from_raw(p.cast()),
+    }
+  }
+}
+
+#[derive(Clone)]
+pub struct CancelHandle {
+  fds: FdState,
+  ex: rio::Executor,
+}
+
+impl CancelHandle {
+  #[must_use]
+  pub fn new(fds: FdState, ex: rio::Executor) -> Self {
+    Self { fds, ex }
+  }
+
+  pub fn cancel(self) {
+    let p = self.fds.get();
+    if unsafe { (*p).disarmed } {
+      return;
+    }
+
+    let ring = self.ex.get_ring();
+    let sqe = unsafe { rio::liburing::make_sqe(ring) };
+    unsafe {
+      rio::liburing::io_uring_prep_cancel(
+        sqe,
+        p.cast::<rio::libc::c_void>(),
+        0,
+      );
+    }
+
+    unsafe {
+      rio::liburing::io_uring_submit(ring);
+    }
+  }
+
+  pub fn disarm(&mut self) {
+    let p = self.fds.get();
+    unsafe {
+      (*p).disarmed = true;
     }
   }
 }

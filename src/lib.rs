@@ -293,8 +293,13 @@ impl std::default::Default for IoContext {
 }
 
 impl Executor {
-  unsafe fn get_state(&self) -> *mut IoContextState {
-    (*std::rc::Rc::as_ptr(&self.p)).get()
+  fn get_state(&self) -> *mut IoContextState {
+    unsafe { (*std::rc::Rc::as_ptr(&self.p)).get() }
+  }
+
+  #[must_use]
+  pub fn get_ring(&self) -> *mut liburing::io_uring {
+    unsafe { (*self.get_state()).ring }
   }
 
   pub fn post(&mut self, mut task: std::pin::Pin<Box<Task>>) {
