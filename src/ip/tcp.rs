@@ -449,3 +449,10 @@ impl Socket {
     }
   }
 }
+
+impl<'a> AcceptFuture<'a> {
+  #[must_use]
+  pub fn get_cancel_handle(&self) -> rio::op::CancelHandle {
+    rio::op::CancelHandle::new(self.fds.clone(), self.ex.clone())
+  }
+}

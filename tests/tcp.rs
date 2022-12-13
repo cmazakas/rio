@@ -124,3 +124,52 @@ fn drop_accept_pending() {
   ioc.run();
   assert_eq!(unsafe { NUM_RUNS }, 1);
 }
+
+#[test]
+fn cancel_accept() {
+  static mut NUM_RUNS: i32 = 0;
+
+  let mut ioc = rio::IoContext::new();
+  let mut ex = ioc.get_executor();
+
+  ioc.post(Box::pin(async move {
+    let mut acceptor = rio::ip::tcp::Acceptor::new(ex.clone());
+    acceptor.listen(0x7f000001, 3303).unwrap();
+    let mut f = acceptor.async_accept();
+
+    let waker = std::sync::Arc::new(NopWaker {}).into();
+    let mut cx = std::task::Context::from_waker(&waker);
+
+    assert!(
+      unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }
+        .is_pending()
+    );
+
+    let c = f.get_cancel_handle();
+
+    ex.post(Box::pin({
+      let ex = ex.clone();
+      async move {
+        let mut timer = rio::time::Timer::new(ex);
+        timer.expires_after(std::time::Duration::from_millis(500));
+        timer.async_wait().await.unwrap();
+
+        c.cancel();
+      }
+    }));
+
+    let result = f.await;
+    match result {
+      Ok(_) => panic!("Ok is not valid for cancellation"),
+      Err(err) => match err {
+        rio::libc::Errno::ECANCELED => {}
+        _ => panic!("incorrect errno value"),
+      },
+    }
+
+    unsafe { NUM_RUNS += 1 };
+  }));
+
+  ioc.run();
+  assert_eq!(unsafe { NUM_RUNS }, 1);
+}
