@@ -22,6 +22,7 @@ pub struct Acceptor {
 
 pub struct Socket {
   fd: i32,
+  timer: rio::time::Timer,
   ex: rio::Executor,
 }
 
@@ -34,6 +35,7 @@ pub struct AcceptFuture<'a> {
 pub struct ConnectFuture<'a> {
   ex: rio::Executor,
   fds: rio::op::FdState,
+  timer_future: rio::time::TimerFuture<'a>,
   _m: std::marker::PhantomData<&'a mut Socket>,
 }
 
@@ -150,8 +152,8 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
 impl<'a> std::future::Future for ConnectFuture<'a> {
   type Output = Result<(), rio::libc::Errno>;
   fn poll(
-    self: std::pin::Pin<&mut Self>,
-    _cx: &mut std::task::Context<'_>,
+    mut self: std::pin::Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Self::Output> {
     let p = self.fds.get();
     let fds = unsafe { &mut *p };
@@ -188,10 +190,26 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
 
       unsafe { rio::liburing::io_uring_submit(ring) };
 
+      assert!(unsafe {
+        std::pin::Pin::new_unchecked(&mut self.timer_future)
+          .poll(cx)
+          .is_pending()
+      });
+
       return std::task::Poll::Pending;
     }
 
     if !fds.done {
+      let timer_expired = unsafe {
+        std::pin::Pin::new_unchecked(&mut self.timer_future)
+          .poll(cx)
+          .is_ready()
+      };
+
+      if timer_expired {
+        self.get_cancel_handle().cancel();
+      }
+
       return std::task::Poll::Pending;
     }
 
@@ -399,13 +417,18 @@ impl Socket {
   pub fn new(ex: rio::Executor) -> Self {
     Self {
       fd: rio::liburing::make_ipv4_tcp_socket().unwrap(),
-      ex,
+      ex: ex.clone(),
+      timer: rio::time::Timer::new(ex),
     }
   }
 
   #[must_use]
   pub unsafe fn from_raw(ex: rio::Executor, fd: i32) -> Self {
-    Self { fd, ex }
+    Self {
+      fd,
+      ex: ex.clone(),
+      timer: rio::time::Timer::new(ex),
+    }
   }
 
   pub fn async_connect(&mut self, ipv4_addr: u32, port: u16) -> ConnectFuture {
@@ -416,9 +439,14 @@ impl Socket {
       }),
     );
 
+    let timeout = std::time::Duration::from_millis(2000);
+    self.timer.expires_after(timeout);
+    let timer_future = self.timer.async_wait();
+
     ConnectFuture {
       ex: self.ex.clone(),
       fds,
+      timer_future,
       _m: std::marker::PhantomData,
     }
   }
@@ -451,6 +479,13 @@ impl Socket {
 }
 
 impl<'a> AcceptFuture<'a> {
+  #[must_use]
+  pub fn get_cancel_handle(&self) -> rio::op::CancelHandle {
+    rio::op::CancelHandle::new(self.fds.clone(), self.ex.clone())
+  }
+}
+
+impl<'a> ConnectFuture<'a> {
   #[must_use]
   pub fn get_cancel_handle(&self) -> rio::op::CancelHandle {
     rio::op::CancelHandle::new(self.fds.clone(), self.ex.clone())

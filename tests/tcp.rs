@@ -91,6 +91,35 @@ fn econnrefused_connect_future() {
 }
 
 #[test]
+fn connect_timeout() {
+  static mut NUM_RUNS: i32 = 0;
+
+  let mut ioc = rio::IoContext::new();
+  let ex = ioc.get_executor();
+
+  let mut client = rio::ip::tcp::Socket::new(ex);
+  ioc.post(Box::pin(async move {
+    // use one of the IP addresses from the test networks:
+    // 192.0.2.0/24
+    // https://en.wikipedia.org/wiki/Internet_Protocol_version_4#Special-use_addresses
+    let r = client.async_connect(0xc0000201, 3301).await;
+
+    match r {
+      Err(e) => match e {
+        rio::libc::Errno::ECANCELED => {}
+        _ => panic!("incorrect errno value, should be ECANCELED"),
+      },
+      _ => panic!("expected an error when connecting"),
+    }
+
+    unsafe { NUM_RUNS += 1 };
+  }));
+
+  ioc.run();
+  assert_eq!(unsafe { NUM_RUNS }, 1);
+}
+
+#[test]
 fn drop_accept_pending() {
   static mut NUM_RUNS: i32 = 0;
 
@@ -135,16 +164,7 @@ fn cancel_accept() {
   ioc.post(Box::pin(async move {
     let mut acceptor = rio::ip::tcp::Acceptor::new(ex.clone());
     acceptor.listen(0x7f000001, 3303).unwrap();
-    let mut f = acceptor.async_accept();
-
-    let waker = std::sync::Arc::new(NopWaker {}).into();
-    let mut cx = std::task::Context::from_waker(&waker);
-
-    assert!(
-      unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }
-        .is_pending()
-    );
-
+    let f = acceptor.async_accept();
     let c = f.get_cancel_handle();
 
     ex.post(Box::pin({
