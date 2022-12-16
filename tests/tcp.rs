@@ -112,6 +112,8 @@ fn connect_timeout() {
       _ => panic!("expected an error when connecting"),
     }
 
+    println!("do I really get here????");
+
     unsafe { NUM_RUNS += 1 };
   }));
 
