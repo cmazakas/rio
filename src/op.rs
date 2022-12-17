@@ -18,6 +18,7 @@ pub struct FdStateImpl {
 pub enum Op {
   Null,
   Timer(TimerState),
+  Timeout(TimeoutState),
   Accept(AcceptState),
   Connect(ConnectState),
   Read(ReadState),
@@ -26,6 +27,10 @@ pub enum Op {
 
 pub struct TimerState {
   pub buf: u64,
+}
+
+pub struct TimeoutState {
+  pub tspec: rio::libc::kernel_timespec,
 }
 
 #[derive(Clone)]

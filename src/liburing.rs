@@ -85,6 +85,14 @@ extern "C" {
     user_data: *mut libc::c_void,
     flags: i32,
   );
+
+  pub fn io_uring_prep_timeout(
+    sqe: *mut io_uring_sqe,
+    ts: *mut rio::libc::kernel_timespec,
+    count: u32,
+    flags: u32,
+  );
+
   pub fn io_uring_prep_nop(sqe: *mut io_uring_sqe);
 }
 

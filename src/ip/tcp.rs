@@ -22,7 +22,6 @@ pub struct Acceptor {
 
 pub struct Socket {
   fd: i32,
-  timer_fd: i32,
   ex: rio::Executor,
   timeout: std::time::Duration,
 }
@@ -37,7 +36,6 @@ pub struct ConnectFuture<'a> {
   ex: rio::Executor,
   connect_fds: rio::op::FdState,
   timer_fds: rio::op::FdState,
-  timeout: std::time::Duration,
   _m: std::marker::PhantomData<&'a mut Socket>,
 }
 
@@ -155,7 +153,7 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
 impl<'a> std::future::Future for ConnectFuture<'a> {
   type Output = Result<(), rio::libc::Errno>;
   fn poll(
-    mut self: std::pin::Pin<&mut Self>,
+    self: std::pin::Pin<&mut Self>,
     _cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Self::Output> {
     let p = self.connect_fds.get();
@@ -223,24 +221,10 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
       );
     }
 
-    self.timeout = std::time::Duration::from_secs(15);
-    println!("setting timeout to: {}", self.timeout.as_secs());
     let timer_sqe = unsafe { rio::liburing::make_sqe(ring) };
-    assert!(
-      unsafe {
-        rio::liburing::timerfd_settime(
-          timer_fds.fd,
-          self.timeout.as_secs() as u64,
-          u64::from(self.timeout.subsec_nanos()),
-        )
-      }
-      .is_ok(),
-      "Failed to set timer on FD"
-    );
-
-    let buf = match timer_fds.op {
-      rio::op::Op::Timer(ref mut ts) => {
-        std::ptr::addr_of_mut!(ts.buf).cast::<rio::libc::c_void>()
+    let ts = match timer_fds.op {
+      rio::op::Op::Timeout(ref mut ts) => {
+        std::ptr::addr_of_mut!(ts.tspec)
       }
       _ => panic!("invalid op type in TimerFuture"),
     };
@@ -253,8 +237,8 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
 
     unsafe {
       rio::liburing::io_uring_sqe_set_data(timer_sqe, user_data);
-      rio::liburing::io_uring_prep_read(timer_sqe, timer_fds.fd, buf, 8, 0);
-      rio::liburing::io_uring_sqe_set_flags(timer_sqe, 1_u32 << 2);
+      rio::liburing::io_uring_prep_timeout(timer_sqe, ts, 0, 0);
+      rio::liburing::io_uring_sqe_set_flags(timer_sqe, 1_u32 << 3);
     }
 
     let cancel_connect_sqe = unsafe { rio::liburing::make_sqe(ring) };
@@ -526,7 +510,6 @@ impl Drop for Socket {
   fn drop(&mut self) {
     if self.fd != -1 {
       unsafe { rio::libc::close(self.fd) };
-      unsafe { rio::libc::close(self.timer_fd) };
     }
   }
 }
@@ -534,26 +517,18 @@ impl Drop for Socket {
 impl Socket {
   #[must_use]
   pub fn new(ex: rio::Executor) -> Self {
-    let timer_fd = rio::liburing::timerfd_create();
-    assert!(timer_fd != -1, "Can't create a timer");
-
     Self {
       fd: rio::liburing::make_ipv4_tcp_socket().unwrap(),
       ex,
-      timer_fd,
       timeout: std::time::Duration::from_secs(30),
     }
   }
 
   #[must_use]
   pub unsafe fn from_raw(ex: rio::Executor, fd: i32) -> Self {
-    let timer_fd = rio::liburing::timerfd_create();
-    assert!(timer_fd != -1, "Can't create a timer");
-
     Self {
       fd,
-      ex: ex.clone(),
-      timer_fd,
+      ex,
       timeout: std::time::Duration::from_secs(30),
     }
   }
@@ -567,17 +542,19 @@ impl Socket {
     );
 
     let timer_fds = rio::op::FdState::new(
-      self.timer_fd,
-      rio::op::Op::Timer(rio::op::TimerState { buf: 0 }),
+      -1,
+      rio::op::Op::Timeout(rio::op::TimeoutState {
+        tspec: rio::libc::kernel_timespec {
+          tv_sec: 2,
+          tv_nsec: 0,
+        },
+      }),
     );
-
-    let timeout = self.timeout;
 
     ConnectFuture {
       ex: self.ex.clone(),
       connect_fds,
       timer_fds,
-      timeout,
       _m: std::marker::PhantomData,
     }
   }
