@@ -10,6 +10,13 @@ pub struct sockaddr {
   _data: [u8; 0],
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct kernel_timespec {
+  pub tv_sec: i64,
+  pub tv_nsec: i64,
+}
+
 extern "C" {
   pub fn close(fd: i32) -> i32;
   pub fn errno_to_int(e: i32) -> i32;
@@ -21,6 +28,8 @@ extern "C" {
     ipv4_addr: u32,
     port: u16,
   ) -> rio::ip::tcp::sockaddr_in;
+
+  pub fn rio_timespec_test(ts: kernel_timespec) -> kernel_timespec;
 }
 
 #[allow(clippy::too_many_lines)]
@@ -171,6 +180,7 @@ impl std::fmt::Debug for Errno {
       Self::ECANCELED => f.write_str("ecanceled"),
       Self::EADDRNOTAVAIL => f.write_str("eaddrnotavail"),
       Self::EINVAL => f.write_str("einval"),
+      Self::ETIME => f.write_str("etime"),
       Self::RIO_UNKNOWN => f.write_str("encountered an unknown error"),
       _ => f.write_str("Unsupported error code"),
     }

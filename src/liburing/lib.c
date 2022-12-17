@@ -6,6 +6,7 @@
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <arpa/inet.h>
+#include <linux/time_types.h>
 
 #include <assert.h>
 #include <errno.h>
@@ -465,3 +466,5 @@ struct sockaddr_in rio_make_sockaddr_in(uint32_t ipv4_addr, uint16_t port)
   addr.sin_addr.s_addr = ntohl(ipv4_addr);
   return addr;
 }
+
+struct __kernel_timespec rio_timespec_test(struct __kernel_timespec in) { return in; }

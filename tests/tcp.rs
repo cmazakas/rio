@@ -14,6 +14,19 @@ fn sockaddr_in_ffi_check() {
 }
 
 #[test]
+fn kernel_timespec_ffi_check() {
+  let timespec = rio::libc::kernel_timespec {
+    tv_nsec: 1337,
+    tv_sec: 7331,
+  };
+
+  let t2 = unsafe { rio::libc::rio_timespec_test(timespec) };
+
+  assert_eq!(t2.tv_sec, timespec.tv_sec);
+  assert_eq!(t2.tv_nsec, timespec.tv_nsec);
+}
+
+#[test]
 fn tcp_acceptor() {
   static mut NUM_RUNS: i32 = 0;
 
