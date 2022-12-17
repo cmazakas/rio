@@ -250,6 +250,9 @@ impl IoContext {
           (*p).res = res;
 
           println!("res is: {res}");
+          if res < 0 {
+            println!("errno: {:?}", libc::errno(-res));
+          }
         }
         unsafe { (*p).task.take().unwrap() }
       };
