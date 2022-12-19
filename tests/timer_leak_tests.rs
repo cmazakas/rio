@@ -1,4 +1,4 @@
-extern crate rio;
+extern crate fiona;
 
 use std::future::Future;
 
@@ -14,11 +14,11 @@ fn forget_future_initiated() {
   }
 
   static mut WAS_RUN: bool = false;
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
-      let mut timer = rio::time::Timer::new(ex.clone());
+      let mut timer = fiona::time::Timer::new(ex.clone());
       let timeout = std::time::Duration::from_millis(10);
       timer.expires_after(timeout);
 
@@ -27,10 +27,13 @@ fn forget_future_initiated() {
       let waker = std::sync::Arc::new(NopWaker {}).into();
       let mut cx = std::task::Context::from_waker(&waker);
 
-      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }.is_pending());
+      assert!(
+        unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }
+          .is_pending()
+      );
       std::mem::forget(f);
 
-      let mut timer = rio::time::Timer::new(ex.clone());
+      let mut timer = fiona::time::Timer::new(ex.clone());
       let timeout = std::time::Duration::from_millis(20);
       timer.expires_after(timeout);
       timer.async_wait().await.unwrap();
@@ -59,11 +62,11 @@ fn forget_timer_initiated() {
   }
 
   static mut WAS_RUN: bool = false;
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
-      let mut timer = rio::time::Timer::new(ex.clone());
+      let mut timer = fiona::time::Timer::new(ex.clone());
       let timeout = std::time::Duration::from_millis(10);
       timer.expires_after(timeout);
 
@@ -72,11 +75,14 @@ fn forget_timer_initiated() {
       let waker = std::sync::Arc::new(NopWaker {}).into();
       let mut cx = std::task::Context::from_waker(&waker);
 
-      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }.is_pending());
+      assert!(
+        unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }
+          .is_pending()
+      );
       std::mem::forget(f);
       std::mem::forget(timer);
 
-      let mut timer = rio::time::Timer::new(ex.clone());
+      let mut timer = fiona::time::Timer::new(ex.clone());
       let timeout = std::time::Duration::from_millis(20);
       timer.expires_after(timeout);
       timer.async_wait().await.unwrap();

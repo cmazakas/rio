@@ -1,5 +1,5 @@
-extern crate rio;
+extern crate fiona;
 
 pub fn main() {
-    rio::probe::print_supported();
+    fiona::probe::print_supported();
 }

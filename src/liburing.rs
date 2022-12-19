@@ -1,6 +1,6 @@
 #![allow(clippy::missing_safety_doc)]
 
-use crate::{self as rio, libc};
+use crate::{self as fiona, libc};
 
 #[repr(C)]
 pub struct io_uring {
@@ -52,7 +52,7 @@ extern "C" {
   pub fn io_uring_prep_accept(
     sqe: *mut io_uring_sqe,
     fd: i32,
-    addr: *mut rio::ip::tcp::sockaddr_in,
+    addr: *mut fiona::ip::tcp::sockaddr_in,
     addrlen: *mut u32,
     flags: i32,
   );
@@ -60,7 +60,7 @@ extern "C" {
   pub fn io_uring_prep_connect(
     sqe: *mut io_uring_sqe,
     sockfd: i32,
-    addr: *const rio::libc::sockaddr,
+    addr: *const fiona::libc::sockaddr,
     addrlen: u32,
   );
 
@@ -75,7 +75,7 @@ extern "C" {
   pub fn io_uring_prep_write(
     sqe: *mut io_uring_sqe,
     fd: i32,
-    buf: *const rio::libc::c_void,
+    buf: *const fiona::libc::c_void,
     nbytes: u32,
     offset: u64,
   );
@@ -88,7 +88,7 @@ extern "C" {
 
   pub fn io_uring_prep_timeout(
     sqe: *mut io_uring_sqe,
-    ts: *mut rio::libc::kernel_timespec,
+    ts: *mut fiona::libc::kernel_timespec,
     count: u32,
     flags: u32,
   );
@@ -121,7 +121,7 @@ pub unsafe fn timerfd_settime(
 ) -> Result<(), libc::Errno> {
   match rio_timerfd_settime(fd, secs, nanos) {
     0 => Ok(()),
-    e => Err(rio::libc::errno(e)),
+    e => Err(fiona::libc::errno(e)),
   }
 }
 

@@ -1,5 +1,10 @@
 [package]
-name = "rio"
+authors = ["Christian Mazakas <christian.mazakas@gmail.com>"]
+categories = ["io_uring", "i/o", "concurrency", "async"]
+description = "Concurrent runtime written against liburing"
+name = "fiona"
+repository = "https://github.com/cmazakas/rio"
+license = "BSL-1.0"
 version = "0.1.0"
 edition = "2021"
 

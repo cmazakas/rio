@@ -9,22 +9,22 @@ fn cross_io_contexts() {
    *
    * TODO: find out why we leak 2 FDs from `io_uring_queue_init` here
    */
-  let mut ioc1 = rio::IoContext::new();
-  let mut ioc2 = rio::IoContext::new();
+  let mut ioc1 = fiona::IoContext::new();
+  let mut ioc2 = fiona::IoContext::new();
 
   let ex1 = ioc1.get_executor();
   let ex2 = ioc2.get_executor();
 
   ioc1.post({
     Box::pin(async move {
-      let mut timer = rio::time::Timer::new(ex2);
+      let mut timer = fiona::time::Timer::new(ex2);
       timer.expires_after(std::time::Duration::from_millis(250));
       timer.async_wait().await.unwrap();
     })
   });
 
   ioc2.post(Box::pin(async move {
-    let mut timer = rio::time::Timer::new(ex1);
+    let mut timer = fiona::time::Timer::new(ex1);
     timer.expires_after(std::time::Duration::from_millis(250));
     timer.async_wait().await.unwrap();
   }));
@@ -32,7 +32,7 @@ fn cross_io_contexts() {
   ioc1.post({
     let ex = ioc1.get_executor();
     Box::pin(async move {
-      let mut timer = rio::time::Timer::new(ex);
+      let mut timer = fiona::time::Timer::new(ex);
       timer.expires_after(std::time::Duration::from_millis(250));
       timer.async_wait().await.unwrap();
     })
@@ -41,7 +41,7 @@ fn cross_io_contexts() {
   ioc2.post({
     let ex = ioc2.get_executor();
     Box::pin(async move {
-      let mut timer = rio::time::Timer::new(ex);
+      let mut timer = fiona::time::Timer::new(ex);
       timer.expires_after(std::time::Duration::from_millis(250));
       timer.async_wait().await.unwrap();
     })

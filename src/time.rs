@@ -1,16 +1,16 @@
-use crate::{self as rio, libc, op::CancelHandle};
+use crate::{self as fiona, libc, op::CancelHandle};
 
 pub struct TimerFuture<'a> {
-  ex: rio::Executor,
-  fds: rio::op::FdState,
+  ex: fiona::Executor,
+  fds: fiona::op::FdState,
   dur: std::time::Duration,
   _m: std::marker::PhantomData<&'a mut Timer>,
 }
 
 impl<'a> TimerFuture<'a> {
   fn new(
-    ex: rio::Executor,
-    fds: rio::op::FdState,
+    ex: fiona::Executor,
+    fds: fiona::op::FdState,
     dur: std::time::Duration,
     m: std::marker::PhantomData<&'a mut Timer>,
   ) -> Self {
@@ -34,9 +34,9 @@ impl<'a> Drop for TimerFuture<'a> {
     if unsafe { (*p).initiated && !(*p).done } {
       unsafe {
         let ring = (*self.ex.get_state()).ring;
-        let sqe = rio::liburing::make_sqe(ring);
-        rio::liburing::io_uring_prep_cancel(sqe, p.cast::<libc::c_void>(), 0);
-        rio::liburing::io_uring_submit((*self.ex.get_state()).ring);
+        let sqe = fiona::liburing::make_sqe(ring);
+        fiona::liburing::io_uring_prep_cancel(sqe, p.cast::<libc::c_void>(), 0);
+        fiona::liburing::io_uring_submit((*self.ex.get_state()).ring);
       }
     }
   }
@@ -51,9 +51,9 @@ impl<'a> Drop for TimerFuture<'a> {
 //       }
 
 //       let ring = (*self.ex.get_state()).ring;
-//       let sqe = rio::liburing::make_sqe(ring);
-//       rio::liburing::io_uring_prep_cancel(sqe, p.cast::<libc::c_void>(), 0);
-//       rio::liburing::io_uring_submit((*self.ex.get_state()).ring);
+//       let sqe = fiona::liburing::make_sqe(ring);
+//       fiona::liburing::io_uring_prep_cancel(sqe, p.cast::<libc::c_void>(), 0);
+//       fiona::liburing::io_uring_submit((*self.ex.get_state()).ring);
 //     }
 //   }
 
@@ -85,7 +85,7 @@ impl<'a> std::future::Future for TimerFuture<'a> {
       }
 
       let exp = match unsafe { &(*p).op } {
-        rio::op::Op::Timer(ref ts) => ts.buf,
+        fiona::op::Op::Timer(ref ts) => ts.buf,
         _ => panic!("The number of expirations for a TimerFuture is strictly one as the buffer is allocated in tandem with the task metadata"),
       };
       assert_eq!(exp, 1);
@@ -95,7 +95,7 @@ impl<'a> std::future::Future for TimerFuture<'a> {
 
     assert!(
       unsafe {
-        rio::liburing::timerfd_settime(
+        fiona::liburing::timerfd_settime(
           (*p).fd,
           self.dur.as_secs() as u64,
           u64::from(self.dur.subsec_nanos()),
@@ -110,22 +110,22 @@ impl<'a> std::future::Future for TimerFuture<'a> {
     unsafe { (*p).task = Some(ioc_state.task_ctx.unwrap()) };
 
     let ring = ioc_state.ring;
-    let sqe = unsafe { rio::liburing::make_sqe(ring) };
+    let sqe = unsafe { fiona::liburing::make_sqe(ring) };
     let buf = match unsafe { &mut (*p).op } {
-      rio::op::Op::Timer(ref mut ts) => {
-        std::ptr::addr_of_mut!(ts.buf).cast::<rio::libc::c_void>()
+      fiona::op::Op::Timer(ref mut ts) => {
+        std::ptr::addr_of_mut!(ts.buf).cast::<fiona::libc::c_void>()
       }
       _ => panic!("invalid op type in TimerFuture"),
     };
 
-    let user_data = self.fds.clone().into_raw().cast::<rio::libc::c_void>();
+    let user_data = self.fds.clone().into_raw().cast::<fiona::libc::c_void>();
 
     unsafe {
-      rio::liburing::io_uring_sqe_set_data(sqe, user_data);
+      fiona::liburing::io_uring_sqe_set_data(sqe, user_data);
     }
 
-    unsafe { rio::liburing::io_uring_prep_read(sqe, fd, buf, 8, 0) };
-    unsafe { rio::liburing::io_uring_submit(ring) };
+    unsafe { fiona::liburing::io_uring_prep_read(sqe, fd, buf, 8, 0) };
+    unsafe { fiona::liburing::io_uring_submit(ring) };
 
     unsafe { (*p).initiated = true };
     std::task::Poll::Pending
@@ -135,13 +135,13 @@ impl<'a> std::future::Future for TimerFuture<'a> {
 pub struct Timer {
   fd: i32,
   dur: std::time::Duration,
-  ex: rio::Executor,
+  ex: fiona::Executor,
 }
 
 impl Timer {
   #[must_use]
-  pub fn new(ex: rio::Executor) -> Self {
-    let fd = rio::liburing::timerfd_create();
+  pub fn new(ex: fiona::Executor) -> Self {
+    let fd = fiona::liburing::timerfd_create();
     assert!(fd != -1, "Can't create a timer");
 
     Self {
@@ -158,9 +158,9 @@ impl Timer {
   pub fn async_wait(&mut self) -> TimerFuture {
     let fd = self.fd;
 
-    let fds = rio::op::FdState::new(
+    let fds = fiona::op::FdState::new(
       fd,
-      rio::op::Op::Timer(rio::op::TimerState { buf: 0 }),
+      fiona::op::Op::Timer(fiona::op::TimerState { buf: 0 }),
     );
     TimerFuture::new(self.ex.clone(), fds, self.dur, std::marker::PhantomData)
   }
@@ -168,6 +168,6 @@ impl Timer {
 
 impl Drop for Timer {
   fn drop(&mut self) {
-    unsafe { rio::libc::close(self.fd) };
+    unsafe { fiona::libc::close(self.fd) };
   }
 }

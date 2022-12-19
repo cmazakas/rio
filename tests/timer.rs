@@ -1,11 +1,11 @@
 use std::future::Future;
 
-extern crate rio;
+extern crate fiona;
 
 #[test]
 fn eager_future() {
   static mut WAS_RUN: bool = false;
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post(Box::pin(async {
     unsafe {
       WAS_RUN = true;
@@ -19,11 +19,11 @@ fn eager_future() {
 #[test]
 fn timer() {
   static mut WAS_RUN: bool = false;
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
-      let mut timer = rio::time::Timer::new(ex);
+      let mut timer = fiona::time::Timer::new(ex);
       timer.expires_after(std::time::Duration::from_millis(500));
       timer.async_wait().await.unwrap();
       unsafe {
@@ -39,13 +39,13 @@ fn timer() {
 #[test]
 fn timer_consecutive() {
   static mut WAS_RUN: bool = false;
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
       // make sure we can wait twice in a row
       //
-      let mut timer = rio::time::Timer::new(ex);
+      let mut timer = fiona::time::Timer::new(ex);
       timer.expires_after(std::time::Duration::from_millis(500));
       timer.async_wait().await.unwrap();
       timer.async_wait().await.unwrap();
@@ -62,14 +62,14 @@ fn timer_consecutive() {
 #[test]
 fn timer_multiple_concurrent() {
   static mut WAS_RUN: bool = false;
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
       // make sure we can wait twice in a row
       //
-      let mut timer1 = rio::time::Timer::new(ex.clone());
-      let mut timer2 = rio::time::Timer::new(ex.clone());
+      let mut timer1 = fiona::time::Timer::new(ex.clone());
+      let mut timer2 = fiona::time::Timer::new(ex.clone());
       timer1.expires_after(std::time::Duration::from_millis(500));
       timer2.expires_after(std::time::Duration::from_millis(750));
       let t = std::time::Instant::now();
@@ -97,13 +97,13 @@ fn timer_multiple_concurrent_manually_polled() {
   // abuse manual polling of Futures
   //
   static mut WAS_RUN: bool = false;
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
-      let mut timer1 = rio::time::Timer::new(ex.clone());
-      let mut timer2 = rio::time::Timer::new(ex.clone());
-      let mut timer3 = rio::time::Timer::new(ex.clone());
+      let mut timer1 = fiona::time::Timer::new(ex.clone());
+      let mut timer2 = fiona::time::Timer::new(ex.clone());
+      let mut timer3 = fiona::time::Timer::new(ex.clone());
 
       timer1.expires_after(std::time::Duration::from_millis(1000));
       timer2.expires_after(std::time::Duration::from_millis(2000));
@@ -115,9 +115,18 @@ fn timer_multiple_concurrent_manually_polled() {
 
       let waker = std::sync::Arc::new(NopWaker {}).into();
       let mut cx = std::task::Context::from_waker(&waker);
-      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }.is_pending());
-      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f2).poll(&mut cx) }.is_pending());
-      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f3).poll(&mut cx) }.is_pending());
+      assert!(
+        unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }
+          .is_pending()
+      );
+      assert!(
+        unsafe { std::pin::Pin::new_unchecked(&mut f2).poll(&mut cx) }
+          .is_pending()
+      );
+      assert!(
+        unsafe { std::pin::Pin::new_unchecked(&mut f3).poll(&mut cx) }
+          .is_pending()
+      );
 
       f2.await.unwrap();
       f3.await.unwrap();
@@ -138,12 +147,12 @@ fn timer_multiple_tasks() {
   const TOTAL_RUNS: i32 = 12;
   static mut NUM_RUNS: i32 = 0;
 
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   for _idx in 0..TOTAL_RUNS {
     ioc.post(Box::pin({
       let ex = ioc.get_executor();
       async move {
-        let mut timer = rio::time::Timer::new(ex);
+        let mut timer = fiona::time::Timer::new(ex);
         timer.expires_after(std::time::Duration::from_millis(500));
         timer.async_wait().await.unwrap();
         timer.async_wait().await.unwrap();
@@ -162,11 +171,11 @@ fn timer_multiple_tasks() {
 #[test]
 fn verify_duration() {
   static mut WAS_RUN: bool = false;
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
-      let mut timer = rio::time::Timer::new(ex);
+      let mut timer = fiona::time::Timer::new(ex);
 
       let timeout = std::time::Duration::from_millis(500);
       timer.expires_after(timeout);
@@ -212,11 +221,11 @@ fn drop_future_initiated() {
   }
 
   static mut WAS_RUN: bool = false;
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
-      let mut timer = rio::time::Timer::new(ex.clone());
+      let mut timer = fiona::time::Timer::new(ex.clone());
       let timeout = std::time::Duration::from_millis(10);
       timer.expires_after(timeout);
 
@@ -225,10 +234,13 @@ fn drop_future_initiated() {
       let waker = std::sync::Arc::new(NopWaker {}).into();
       let mut cx = std::task::Context::from_waker(&waker);
 
-      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }.is_pending());
+      assert!(
+        unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }
+          .is_pending()
+      );
       std::mem::drop(f);
 
-      let mut timer2 = rio::time::Timer::new(ex.clone());
+      let mut timer2 = fiona::time::Timer::new(ex.clone());
       let timeout = std::time::Duration::from_millis(20);
       timer2.expires_after(timeout);
       timer2.async_wait().await.unwrap();
@@ -259,11 +271,11 @@ fn drop_timer_initiated() {
   }
 
   static mut WAS_RUN: bool = false;
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
-      let mut timer = rio::time::Timer::new(ex.clone());
+      let mut timer = fiona::time::Timer::new(ex.clone());
       let timeout = std::time::Duration::from_millis(10);
       timer.expires_after(timeout);
 
@@ -272,7 +284,10 @@ fn drop_timer_initiated() {
       let waker = std::sync::Arc::new(NopWaker {}).into();
       let mut cx = std::task::Context::from_waker(&waker);
 
-      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }.is_pending());
+      assert!(
+        unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }
+          .is_pending()
+      );
 
       // by dropping and then creating a new timer object, we guarantee the FD
       // is reused
@@ -280,7 +295,7 @@ fn drop_timer_initiated() {
       std::mem::drop(f);
       std::mem::drop(timer);
 
-      let mut timer2 = rio::time::Timer::new(ex.clone());
+      let mut timer2 = fiona::time::Timer::new(ex.clone());
       let timeout = std::time::Duration::from_millis(20);
       timer2.expires_after(timeout);
       timer2.async_wait().await.unwrap();
@@ -309,11 +324,11 @@ fn drop_timer_finish_early() {
 
   {
     static mut NUM_RUNS: i32 = 0;
-    let mut ioc = rio::IoContext::new();
+    let mut ioc = fiona::IoContext::new();
     ioc.post(Box::pin({
       let ex = ioc.get_executor();
       async move {
-        let mut timer = rio::time::Timer::new(ex.clone());
+        let mut timer = fiona::time::Timer::new(ex.clone());
         let timeout = std::time::Duration::from_millis(100);
         timer.expires_after(timeout);
 
@@ -322,7 +337,10 @@ fn drop_timer_finish_early() {
         let waker = std::sync::Arc::new(NopWaker {}).into();
         let mut cx = std::task::Context::from_waker(&waker);
 
-        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }.is_pending());
+        assert!(
+          unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }
+            .is_pending()
+        );
 
         unsafe {
           NUM_RUNS += 1;
@@ -335,7 +353,7 @@ fn drop_timer_finish_early() {
       async move {
         let timeout = std::time::Duration::from_millis(250);
 
-        let mut timer = rio::time::Timer::new(ex.clone());
+        let mut timer = fiona::time::Timer::new(ex.clone());
         timer.expires_after(timeout);
         timer.async_wait().await.unwrap();
 
@@ -362,11 +380,11 @@ fn double_wait() {
   }
 
   static mut WAS_RUN: bool = false;
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post(Box::pin({
     let ex = ioc.get_executor();
     async move {
-      let mut timer = rio::time::Timer::new(ex.clone());
+      let mut timer = fiona::time::Timer::new(ex.clone());
       let timeout = std::time::Duration::from_secs(1);
       timer.expires_after(timeout);
 
@@ -375,7 +393,10 @@ fn double_wait() {
       let waker = std::sync::Arc::new(NopWaker {}).into();
       let mut cx = std::task::Context::from_waker(&waker);
 
-      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }.is_pending());
+      assert!(
+        unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }
+          .is_pending()
+      );
 
       std::mem::drop(f);
 
@@ -403,12 +424,12 @@ fn double_wait() {
 fn nested_ioc() {
   static mut WAS_RUN: bool = false;
 
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post(Box::pin(async {
-    let mut ioc2 = rio::IoContext::new();
+    let mut ioc2 = fiona::IoContext::new();
     let ex2 = ioc2.get_executor();
     ioc2.post(Box::pin(async move {
-      let mut timer = rio::time::Timer::new(ex2);
+      let mut timer = fiona::time::Timer::new(ex2);
       timer.expires_after(std::time::Duration::from_millis(100));
       timer.async_wait().await.unwrap();
     }));
@@ -427,12 +448,12 @@ fn nested_ioc() {
 fn nested_future() {
   static mut WAS_RUN: bool = false;
 
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post({
     let ex = ioc.get_executor();
     Box::pin(async {
       let nested = async {
-        let mut timer = rio::time::Timer::new(ex);
+        let mut timer = fiona::time::Timer::new(ex);
         let dur = std::time::Duration::from_millis(500);
         let t = std::time::Instant::now();
         timer.expires_after(dur);
@@ -453,11 +474,11 @@ fn nested_future() {
 fn cancellation() {
   static mut WAS_RUN: bool = false;
 
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post({
     let mut ex = ioc.get_executor();
     Box::pin(async move {
-      let mut timer = rio::time::Timer::new(ex.clone());
+      let mut timer = fiona::time::Timer::new(ex.clone());
       timer.expires_after(std::time::Duration::from_secs(30));
       let f = timer.async_wait();
       let c = f.get_cancel_handle();
@@ -465,7 +486,7 @@ fn cancellation() {
       ex.post(Box::pin({
         let ex = ex.clone();
         async move {
-          let mut timer2 = rio::time::Timer::new(ex);
+          let mut timer2 = fiona::time::Timer::new(ex);
           timer2.expires_after(std::time::Duration::from_millis(250));
           timer2.async_wait().await.unwrap();
           c.cancel();
@@ -473,8 +494,9 @@ fn cancellation() {
       }));
 
       let result = f.await;
-      match result.expect_err("Operation didn't report cancellation properly!") {
-        rio::libc::Errno::ECANCELED => {}
+      match result.expect_err("Operation didn't report cancellation properly!")
+      {
+        fiona::libc::Errno::ECANCELED => {}
         _ => panic!("Incorrect error type returned, should be ECANCELED"),
       }
 
@@ -490,11 +512,11 @@ fn cancellation() {
 fn cancellation_with_drop() {
   static mut NUM_RUNS: i32 = 0;
 
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post({
     let mut ex = ioc.get_executor();
     Box::pin(async move {
-      let mut timer = rio::time::Timer::new(ex.clone());
+      let mut timer = fiona::time::Timer::new(ex.clone());
       timer.expires_after(std::time::Duration::from_secs(30));
       let f = timer.async_wait();
       let c = f.get_cancel_handle();
@@ -515,7 +537,7 @@ fn cancellation_with_drop() {
   ioc.post({
     let ex = ioc.get_executor();
     Box::pin(async move {
-      let mut timer = rio::time::Timer::new(ex);
+      let mut timer = fiona::time::Timer::new(ex);
       timer.expires_after(std::time::Duration::from_millis(250));
       timer.async_wait().await.unwrap();
       unsafe { NUM_RUNS += 1 };
@@ -530,11 +552,11 @@ fn cancellation_with_drop() {
 fn cancellation_post_expiration() {
   static mut NUM_RUNS: i32 = 0;
 
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post({
     let ex = ioc.get_executor();
     Box::pin(async move {
-      let mut timer = rio::time::Timer::new(ex);
+      let mut timer = fiona::time::Timer::new(ex);
       timer.expires_after(std::time::Duration::from_millis(30));
       let f = timer.async_wait();
       let c = f.get_cancel_handle();
@@ -549,7 +571,7 @@ fn cancellation_post_expiration() {
   ioc.post({
     let ex = ioc.get_executor();
     Box::pin(async move {
-      let mut timer = rio::time::Timer::new(ex);
+      let mut timer = fiona::time::Timer::new(ex);
       timer.expires_after(std::time::Duration::from_millis(250));
       timer.async_wait().await.unwrap();
 
@@ -565,11 +587,11 @@ fn cancellation_post_expiration() {
 fn cancellation_disarming() {
   static mut NUM_RUNS: i32 = 0;
 
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post({
     let mut ex = ioc.get_executor();
     Box::pin(async move {
-      let mut timer = rio::time::Timer::new(ex.clone());
+      let mut timer = fiona::time::Timer::new(ex.clone());
       timer.expires_after(std::time::Duration::from_millis(30));
       let f = timer.async_wait();
       let mut c = f.get_cancel_handle();
@@ -578,7 +600,7 @@ fn cancellation_disarming() {
         let ex = ex.clone();
         let c = c.clone();
         Box::pin(async move {
-          let mut timer = rio::time::Timer::new(ex);
+          let mut timer = fiona::time::Timer::new(ex);
           timer.expires_after(std::time::Duration::from_secs(1));
           timer.async_wait().await.unwrap();
           c.cancel();

@@ -1,8 +1,8 @@
 #![allow(non_camel_case_types, dead_code)]
 
-extern crate rio;
+extern crate fiona;
 
-use rio::libc::c_void;
+use fiona::libc::c_void;
 use std::os::unix::prelude::AsRawFd;
 
 const QUEUE_DEPTH: u32 = 1;

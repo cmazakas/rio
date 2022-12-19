@@ -1,4 +1,4 @@
-use crate as rio;
+use crate as fiona;
 
 #[derive(Clone)]
 pub struct FdState {
@@ -11,7 +11,7 @@ pub struct FdStateImpl {
   pub disarmed: bool,
   pub fd: i32,
   pub res: i32,
-  pub task: Option<*mut rio::Task>,
+  pub task: Option<*mut fiona::Task>,
   pub op: Op,
 }
 
@@ -30,17 +30,17 @@ pub struct TimerState {
 }
 
 pub struct TimeoutState {
-  pub tspec: rio::libc::kernel_timespec,
+  pub tspec: fiona::libc::kernel_timespec,
 }
 
 #[derive(Clone)]
 pub struct AcceptState {
-  pub addr_in: rio::ip::tcp::sockaddr_in,
+  pub addr_in: fiona::ip::tcp::sockaddr_in,
   pub addr_len: u32,
 }
 
 pub struct ConnectState {
-  pub addr_in: rio::ip::tcp::sockaddr_in,
+  pub addr_in: fiona::ip::tcp::sockaddr_in,
 }
 
 pub struct ReadState {
@@ -87,12 +87,12 @@ impl FdState {
 #[derive(Clone)]
 pub struct CancelHandle {
   fds: FdState,
-  ex: rio::Executor,
+  ex: fiona::Executor,
 }
 
 impl CancelHandle {
   #[must_use]
-  pub fn new(fds: FdState, ex: rio::Executor) -> Self {
+  pub fn new(fds: FdState, ex: fiona::Executor) -> Self {
     Self { fds, ex }
   }
 
@@ -103,17 +103,17 @@ impl CancelHandle {
     }
 
     let ring = self.ex.get_ring();
-    let sqe = unsafe { rio::liburing::make_sqe(ring) };
+    let sqe = unsafe { fiona::liburing::make_sqe(ring) };
     unsafe {
-      rio::liburing::io_uring_prep_cancel(
+      fiona::liburing::io_uring_prep_cancel(
         sqe,
-        p.cast::<rio::libc::c_void>(),
+        p.cast::<fiona::libc::c_void>(),
         0,
       );
     }
 
     unsafe {
-      rio::liburing::io_uring_submit(ring);
+      fiona::liburing::io_uring_submit(ring);
     }
   }
 

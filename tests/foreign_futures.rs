@@ -1,4 +1,4 @@
-extern crate rio;
+extern crate fiona;
 
 use std::future::Future;
 
@@ -41,7 +41,7 @@ impl std::future::Future for TimerFuture {
 fn foreign_timer_future() {
   static mut NUM_RUNS: i32 = 0;
 
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post({
     Box::pin(async move {
       TimerFuture { join_handle: None }.await;
@@ -59,7 +59,7 @@ fn foreign_timer_future() {
 fn foreign_multiple_timer_future() {
   static mut NUM_RUNS: i32 = 0;
 
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post({
     Box::pin(async move {
       let mut f1 = TimerFuture { join_handle: None };
@@ -67,13 +67,25 @@ fn foreign_multiple_timer_future() {
       let mut f3 = TimerFuture { join_handle: None };
       let mut f4 = TimerFuture { join_handle: None };
 
-      let waker = rio::WakerFuture {}.await;
+      let waker = fiona::WakerFuture {}.await;
       let mut cx = std::task::Context::from_waker(&waker);
 
-      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }.is_pending());
-      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f2).poll(&mut cx) }.is_pending());
-      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f3).poll(&mut cx) }.is_pending());
-      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f4).poll(&mut cx) }.is_pending());
+      assert!(
+        unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }
+          .is_pending()
+      );
+      assert!(
+        unsafe { std::pin::Pin::new_unchecked(&mut f2).poll(&mut cx) }
+          .is_pending()
+      );
+      assert!(
+        unsafe { std::pin::Pin::new_unchecked(&mut f3).poll(&mut cx) }
+          .is_pending()
+      );
+      assert!(
+        unsafe { std::pin::Pin::new_unchecked(&mut f4).poll(&mut cx) }
+          .is_pending()
+      );
 
       f4.await;
       f2.await;
@@ -91,13 +103,25 @@ fn foreign_multiple_timer_future() {
       let mut f3 = TimerFuture { join_handle: None };
       let mut f4 = TimerFuture { join_handle: None };
 
-      let waker = rio::WakerFuture {}.await;
+      let waker = fiona::WakerFuture {}.await;
       let mut cx = std::task::Context::from_waker(&waker);
 
-      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }.is_pending());
-      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f2).poll(&mut cx) }.is_pending());
-      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f3).poll(&mut cx) }.is_pending());
-      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f4).poll(&mut cx) }.is_pending());
+      assert!(
+        unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }
+          .is_pending()
+      );
+      assert!(
+        unsafe { std::pin::Pin::new_unchecked(&mut f2).poll(&mut cx) }
+          .is_pending()
+      );
+      assert!(
+        unsafe { std::pin::Pin::new_unchecked(&mut f3).poll(&mut cx) }
+          .is_pending()
+      );
+      assert!(
+        unsafe { std::pin::Pin::new_unchecked(&mut f4).poll(&mut cx) }
+          .is_pending()
+      );
 
       f1.await;
       f2.await;
@@ -118,11 +142,11 @@ fn foreign_multiple_timer_future() {
 fn mixed_futures() {
   static mut NUM_RUNS: i32 = 0;
 
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post({
     let ex = ioc.get_executor();
     Box::pin(async move {
-      let mut timer = rio::time::Timer::new(ex);
+      let mut timer = fiona::time::Timer::new(ex);
       timer.expires_after(std::time::Duration::from_millis(500));
       timer.async_wait().await.unwrap();
 
@@ -143,15 +167,18 @@ fn mixed_futures() {
 fn forget() {
   static mut NUM_RUNS: i32 = 0;
 
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post({
     Box::pin(async move {
       let mut f1 = TimerFuture { join_handle: None };
 
-      let waker = rio::WakerFuture {}.await;
+      let waker = fiona::WakerFuture {}.await;
       let mut cx = std::task::Context::from_waker(&waker);
 
-      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }.is_pending());
+      assert!(
+        unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }
+          .is_pending()
+      );
 
       std::mem::forget(f1);
       unsafe { NUM_RUNS += 1 };
@@ -168,15 +195,18 @@ fn forget() {
 fn drop() {
   static mut NUM_RUNS: i32 = 0;
 
-  let mut ioc = rio::IoContext::new();
+  let mut ioc = fiona::IoContext::new();
   ioc.post({
     Box::pin(async move {
       let mut f1 = TimerFuture { join_handle: None };
 
-      let waker = rio::WakerFuture {}.await;
+      let waker = fiona::WakerFuture {}.await;
       let mut cx = std::task::Context::from_waker(&waker);
 
-      assert!(unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }.is_pending());
+      assert!(
+        unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }
+          .is_pending()
+      );
 
       std::mem::drop(f1);
       unsafe { NUM_RUNS += 1 };
