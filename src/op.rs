@@ -31,6 +31,7 @@ pub struct TimerState {
 
 pub struct TimeoutState {
   pub tspec: fiona::libc::kernel_timespec,
+  pub op_fds: Option<FdState>,
 }
 
 #[derive(Clone)]
@@ -41,6 +42,7 @@ pub struct AcceptState {
 
 pub struct ConnectState {
   pub addr_in: fiona::ip::tcp::sockaddr_in,
+  pub timer_fds: Option<FdState>,
 }
 
 pub struct ReadState {

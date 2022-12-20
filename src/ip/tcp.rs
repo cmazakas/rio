@@ -122,8 +122,8 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
 
       unsafe { fiona::liburing::io_uring_sqe_set_data(sqe, user_data) };
       unsafe {
-        fiona::liburing::io_uring_prep_accept(sqe, fd, addr, addrlen, 0)
-      };
+        fiona::liburing::io_uring_prep_accept(sqe, fd, addr, addrlen, 0);
+      }
       unsafe { fiona::liburing::io_uring_submit(ring) };
       return std::task::Poll::Pending;
     }
@@ -169,6 +169,13 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
     println!("timer_fds: {:?}", self.timer_fds.get());
 
     if connect_fds.done {
+      match connect_fds.op {
+        fiona::op::Op::Connect(ref mut s) => {
+          s.timer_fds = None;
+        }
+        _ => panic!(""),
+      }
+
       if connect_fds.res < 0 {
         return std::task::Poll::Ready(Err(fiona::libc::errno(
           -connect_fds.res,
@@ -542,18 +549,59 @@ impl Socket {
       self.fd,
       fiona::op::Op::Connect(fiona::op::ConnectState {
         addr_in: unsafe { fiona::libc::rio_make_sockaddr_in(ipv4_addr, port) },
+        timer_fds: None,
       }),
     );
 
     let timer_fds = fiona::op::FdState::new(
       -1,
       fiona::op::Op::Timeout(fiona::op::TimeoutState {
+        op_fds: None,
         tspec: fiona::libc::kernel_timespec {
           tv_sec: 2,
           tv_nsec: 0,
         },
       }),
     );
+
+    /*
+     * we interwine these two allocations so that the user_data pointers remain
+     * valid for each respective SQE.
+     *
+     * i.e. if the timer SQE is set to cancel the connect SQE, the user_data for
+     * the connect SQE must remain valid for the entire duration of the timer
+     * operation.
+     *
+     * Similarly for the connect SQE, which aims to cancel the timer once it
+     * completes.
+     *
+     * This is to prevent cases where we have a scheduled operation to cancel
+     * based on user_data and we have rapid free(),malloc() cycles where the
+     * same address gets recycled.
+     *
+     * The cycle is broken by the connect operation which must complete before
+     * the coroutine is resumed. We do not need to block on the timeout CQE
+     * resuming the parent coroutine. The timeout will keep the connect SQE
+     * allocation alive so attempts at cancellation caused by IOSQE_HARDLINK
+     * won't inadvertantly cancel any in-flight operations.
+     */
+    let p = connect_fds.get();
+    let fds = unsafe { &mut *p };
+    match fds.op {
+      fiona::op::Op::Connect(ref mut s) => {
+        s.timer_fds = Some(timer_fds.clone());
+      }
+      _ => panic!(""),
+    }
+
+    let p = timer_fds.get();
+    let fds = unsafe { &mut *p };
+    match fds.op {
+      fiona::op::Op::Timeout(ref mut s) => {
+        s.op_fds = Some(connect_fds.clone());
+      }
+      _ => panic!(""),
+    }
 
     ConnectFuture {
       ex: self.ex.clone(),
