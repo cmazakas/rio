@@ -23,7 +23,7 @@ pub struct Acceptor {
 pub struct Socket {
   fd: i32,
   ex: fiona::Executor,
-  timeout: std::time::Duration,
+  pub timeout: std::time::Duration,
 }
 
 pub struct AcceptFuture<'a> {
@@ -164,10 +164,6 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
     let p = self.timer_fds.get();
     let timer_fds = unsafe { &mut *p };
 
-    println!("in ConnectFuture");
-    println!("connect_fds: {:?}", self.connect_fds.get());
-    println!("timer_fds: {:?}", self.timer_fds.get());
-
     if connect_fds.done {
       match connect_fds.op {
         fiona::op::Op::Connect(ref mut s) => {
@@ -269,68 +265,6 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
     timer_fds.initiated = true;
 
     std::task::Poll::Pending
-
-    // if !fds.initiated {
-    //   fds.initiated = true;
-
-    //   let sockfd = fds.fd;
-
-    //   let ioc_state = unsafe { &mut *self.ex.get_state() };
-    //   fds.task = Some(ioc_state.task_ctx.unwrap());
-
-    //   let ring = ioc_state.ring;
-    //   let sqe = unsafe { fiona::liburing::make_sqe(ring) };
-
-    //   let (addr, addrlen) = match fds.op {
-    //     fiona::op::Op::Connect(ref s) => (
-    //       std::ptr::addr_of!(s.addr_in),
-    //       std::mem::size_of::<fiona::ip::tcp::sockaddr_in>() as u32,
-    //     ),
-    //     _ => panic!(""),
-    //   };
-
-    //   let user_data = self.fds.clone().into_raw().cast::<fiona::libc::c_void>();
-    //   unsafe { fiona::liburing::io_uring_sqe_set_data(sqe, user_data) };
-
-    //   unsafe {
-    //     fiona::liburing::io_uring_prep_connect(
-    //       sqe,
-    //       sockfd,
-    //       addr.cast::<fiona::libc::sockaddr>(),
-    //       addrlen,
-    //     );
-    //   }
-
-    //   unsafe { fiona::liburing::io_uring_submit(ring) };
-
-    //   assert!(unsafe {
-    //     std::pin::Pin::new_unchecked(&mut self.timer_future)
-    //       .poll(cx)
-    //       .is_pending()
-    //   });
-
-    //   return std::task::Poll::Pending;
-    // }
-
-    // if !fds.done {
-    //   let timer_expired = unsafe {
-    //     std::pin::Pin::new_unchecked(&mut self.timer_future)
-    //       .poll(cx)
-    //       .is_ready()
-    //   };
-
-    //   if timer_expired {
-    //     self.get_cancel_handle().cancel();
-    //   }
-
-    //   return std::task::Poll::Pending;
-    // }
-
-    // if fds.res < 0 {
-    //   std::task::Poll::Ready(Err(fiona::libc::errno(-fds.res)))
-    // } else {
-    //   std::task::Poll::Ready(Ok(()))
-    // }
   }
 }
 
@@ -545,25 +479,6 @@ impl Socket {
   }
 
   pub fn async_connect(&mut self, ipv4_addr: u32, port: u16) -> ConnectFuture {
-    let connect_fds = fiona::op::FdState::new(
-      self.fd,
-      fiona::op::Op::Connect(fiona::op::ConnectState {
-        addr_in: unsafe { fiona::libc::rio_make_sockaddr_in(ipv4_addr, port) },
-        timer_fds: None,
-      }),
-    );
-
-    let timer_fds = fiona::op::FdState::new(
-      -1,
-      fiona::op::Op::Timeout(fiona::op::TimeoutState {
-        op_fds: None,
-        tspec: fiona::libc::kernel_timespec {
-          tv_sec: 2,
-          tv_nsec: 0,
-        },
-      }),
-    );
-
     /*
      * we interwine these two allocations so that the user_data pointers remain
      * valid for each respective SQE.
@@ -585,6 +500,29 @@ impl Socket {
      * allocation alive so attempts at cancellation caused by IOSQE_HARDLINK
      * won't inadvertantly cancel any in-flight operations.
      */
+
+    let connect_fds = fiona::op::FdState::new(
+      self.fd,
+      fiona::op::Op::Connect(fiona::op::ConnectState {
+        addr_in: unsafe { fiona::libc::rio_make_sockaddr_in(ipv4_addr, port) },
+        timer_fds: None,
+      }),
+    );
+
+    let t = self.timeout;
+    let (tv_sec, tv_nsec) = (
+      i64::try_from(t.as_secs()).unwrap(),
+      i64::try_from(t.subsec_nanos()).unwrap(),
+    );
+
+    let timer_fds = fiona::op::FdState::new(
+      -1,
+      fiona::op::Op::Timeout(fiona::op::TimeoutState {
+        op_fds: None,
+        tspec: fiona::libc::kernel_timespec { tv_sec, tv_nsec },
+      }),
+    );
+
     let p = connect_fds.get();
     let fds = unsafe { &mut *p };
     match fds.op {

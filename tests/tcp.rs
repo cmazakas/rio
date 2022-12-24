@@ -111,6 +111,7 @@ fn connect_timeout() {
   let ex = ioc.get_executor();
 
   let mut client = fiona::ip::tcp::Socket::new(ex);
+  client.timeout = std::time::Duration::from_secs(2);
   ioc.post(Box::pin(async move {
     // use one of the IP addresses from the test networks:
     // 192.0.2.0/24
