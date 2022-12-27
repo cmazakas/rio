@@ -2,6 +2,15 @@ extern crate fiona;
 
 use std::future::Future;
 
+static mut PORT: std::sync::atomic::AtomicU16 =
+  std::sync::atomic::AtomicU16::new(3300);
+
+fn get_port() -> u16 {
+  unsafe { PORT.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
+}
+
+const LOCALHOST: u32 = 0x7f000001;
+
 struct NopWaker {}
 impl std::task::Wake for NopWaker {
   fn wake(self: std::sync::Arc<Self>) {}
@@ -30,9 +39,11 @@ fn kernel_timespec_ffi_check() {
 fn tcp_acceptor() {
   static mut NUM_RUNS: i32 = 0;
 
-  async fn server(ex: fiona::Executor) {
+  let port = get_port();
+
+  async fn server(ex: fiona::Executor, port: u16) {
     let mut acceptor = fiona::ip::tcp::Acceptor::new(ex);
-    acceptor.listen(0x7f000001, 3300).unwrap();
+    acceptor.listen(LOCALHOST, port).unwrap();
     let mut stream = acceptor.async_accept().await.unwrap();
 
     let mut buf = vec![0_u8; 4096];
@@ -49,9 +60,9 @@ fn tcp_acceptor() {
     unsafe { NUM_RUNS += 1 };
   }
 
-  async fn client(ex: fiona::Executor) {
+  async fn client(ex: fiona::Executor, port: u16) {
     let mut client = fiona::ip::tcp::Socket::new(ex);
-    client.async_connect(0x7f000001, 3300).await.unwrap();
+    client.async_connect(LOCALHOST, port).await.unwrap();
 
     let str = String::from("Hello, world!").into_bytes();
     client.async_write(str).await.unwrap();
@@ -62,8 +73,8 @@ fn tcp_acceptor() {
   let mut ioc = fiona::IoContext::new();
   let ex = ioc.get_executor();
 
-  ioc.post(Box::pin(server(ex.clone())));
-  ioc.post(Box::pin(client(ex)));
+  ioc.post(Box::pin(server(ex.clone(), port)));
+  ioc.post(Box::pin(client(ex, port)));
   ioc.run();
 
   assert_eq!(unsafe { NUM_RUNS }, 2);
@@ -86,7 +97,7 @@ fn econnrefused_connect_future() {
 
   let mut client = fiona::ip::tcp::Socket::new(ex);
   ioc.post(Box::pin(async move {
-    let r = client.async_connect(0x7f000001, 3301).await;
+    let r = client.async_connect(LOCALHOST, get_port()).await;
 
     match r {
       Err(e) => match e {
@@ -144,7 +155,7 @@ fn drop_accept_pending() {
 
   ioc.post(Box::pin(async {
     let mut acceptor = fiona::ip::tcp::Acceptor::new(ex.clone());
-    acceptor.listen(0x7f000001, 3302).unwrap();
+    acceptor.listen(LOCALHOST, get_port()).unwrap();
     let mut f = acceptor.async_accept();
 
     let waker = std::sync::Arc::new(NopWaker {}).into();
@@ -179,7 +190,7 @@ fn cancel_accept() {
 
   ioc.post(Box::pin(async move {
     let mut acceptor = fiona::ip::tcp::Acceptor::new(ex.clone());
-    acceptor.listen(0x7f000001, 3303).unwrap();
+    acceptor.listen(LOCALHOST, get_port()).unwrap();
     let f = acceptor.async_accept();
     let c = f.get_cancel_handle();
 
