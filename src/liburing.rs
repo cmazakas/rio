@@ -44,6 +44,10 @@ extern "C" {
     ring: *mut io_uring,
     cqe_ptr: *mut *mut io_uring_cqe,
   ) -> i32;
+  pub fn io_uring_peek_cqe(
+    ring: *mut io_uring,
+    cqe_ptr: *mut *mut io_uring_cqe,
+  ) -> i32;
   pub fn io_uring_cqe_seen(ring: *mut io_uring, cqe: *mut io_uring_cqe);
   pub fn io_uring_sqe_set_data(sqe: *mut io_uring_sqe, data: *mut libc::c_void);
   pub fn io_uring_cqe_get_data(cqe: *const io_uring_cqe) -> *mut libc::c_void;

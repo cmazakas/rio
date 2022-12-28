@@ -7,7 +7,8 @@
   clippy::module_name_repetitions,
   clippy::missing_errors_doc,
   clippy::match_wildcard_for_single_variants,
-  clippy::cast_possible_truncation
+  clippy::cast_possible_truncation,
+  clippy::too_many_lines
 )]
 #![allow(non_camel_case_types)]
 
@@ -286,6 +287,22 @@ impl IoContext {
     }
 
     state.task_ctx = None;
+
+    let mut cqe = std::ptr::null_mut::<liburing::io_uring_cqe>();
+    while 0 == unsafe { liburing::io_uring_peek_cqe(ring, &mut cqe) } {
+      assert!(!cqe.is_null());
+
+      println!("leftover cqe is: {:?}", unsafe {
+        liburing::io_uring_cqe_get_data(cqe)
+      });
+
+      let p = unsafe { liburing::io_uring_cqe_get_data(cqe) };
+      if !p.is_null() {
+        let p = p.cast::<op::FdStateImpl>();
+        let _fds = unsafe { op::FdState::from_raw(p) };
+      }
+      unsafe { liburing::io_uring_cqe_seen(ring, cqe) };
+    }
   }
 }
 
