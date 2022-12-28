@@ -47,6 +47,7 @@ pub struct ConnectState {
 
 pub struct ReadState {
   pub buf: Option<Vec<u8>>,
+  pub timer_fds: Option<FdState>,
 }
 
 pub struct WriteState {

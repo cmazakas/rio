@@ -147,6 +147,49 @@ fn connect_timeout() {
 }
 
 #[test]
+fn read_timeout() {
+  static mut NUM_RUNS: i32 = 0;
+
+  let mut ioc = fiona::IoContext::new();
+  let ex = ioc.get_executor();
+
+  let port = get_port();
+
+  let mut acceptor = fiona::ip::tcp::Acceptor::new(ex.clone());
+  acceptor.listen(LOCALHOST, port).unwrap();
+
+  let mut client = fiona::ip::tcp::Socket::new(ex.clone());
+
+  ioc.post(Box::pin(async move {
+    let _s = acceptor.async_accept().await.unwrap();
+    let mut timer = fiona::time::Timer::new(ex);
+    timer.expires_after(std::time::Duration::from_secs(2));
+    timer.async_wait().await.unwrap();
+  }));
+
+  ioc.post(Box::pin(async move {
+    client.timeout = std::time::Duration::from_secs(1);
+    client.async_connect(LOCALHOST, port).await.unwrap();
+
+    let mut buf = vec![0_u8; 128];
+    unsafe {
+      buf.set_len(0);
+    }
+
+    let r = client.async_read(buf).await.unwrap_err();
+    match r {
+      fiona::libc::Errno::ECANCELED => {}
+      _ => panic!(""),
+    };
+
+    unsafe { NUM_RUNS += 1 };
+  }));
+
+  ioc.run();
+  assert_eq!(unsafe { NUM_RUNS }, 1);
+}
+
+#[test]
 fn drop_accept_pending() {
   static mut NUM_RUNS: i32 = 0;
 

@@ -41,7 +41,8 @@ pub struct ConnectFuture<'a> {
 
 pub struct ReadFuture<'a> {
   ex: fiona::Executor,
-  fds: fiona::op::FdState,
+  read_fds: fiona::op::FdState,
+  timer_fds: fiona::op::FdState,
   _m: std::marker::PhantomData<&'a mut Socket>,
 }
 
@@ -49,6 +50,13 @@ pub struct WriteFuture<'a> {
   ex: fiona::Executor,
   fds: fiona::op::FdState,
   _m: std::marker::PhantomData<&'a mut Socket>,
+}
+
+fn get_tv_sec(t: std::time::Duration) -> (i64, i64) {
+  (
+    i64::try_from(t.as_secs()).unwrap(),
+    i64::try_from(t.subsec_nanos()).unwrap(),
+  )
 }
 
 unsafe fn drop_cancel(
@@ -84,7 +92,8 @@ impl<'a> Drop for ConnectFuture<'a> {
 
 impl<'a> Drop for ReadFuture<'a> {
   fn drop(&mut self) {
-    unsafe { drop_cancel(self.fds.get(), self.ex.get_state()) };
+    unsafe { drop_cancel(self.read_fds.get(), self.ex.get_state()) };
+    unsafe { drop_cancel(self.timer_fds.get(), self.ex.get_state()) };
   }
 }
 
@@ -242,6 +251,8 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
       .into_raw()
       .cast::<fiona::libc::c_void>();
 
+    println!("scheduling timer sqe in ConnectFuture: {:?}", user_data);
+
     unsafe {
       fiona::liburing::io_uring_sqe_set_data(timer_sqe, user_data);
       fiona::liburing::io_uring_prep_timeout(timer_sqe, ts, 0, 0);
@@ -270,19 +281,35 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
 
 impl<'a> std::future::Future for ReadFuture<'a> {
   type Output = Result<Vec<u8>, fiona::libc::Errno>;
+
   fn poll(
     self: std::pin::Pin<&mut Self>,
     _cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Self::Output> {
-    let p = self.fds.get();
-    let fds = unsafe { &mut *p };
+    println!("in ReadFuture");
 
-    if fds.done {
-      if fds.res < 0 {
-        return std::task::Poll::Ready(Err(fiona::libc::errno(-fds.res)));
+    let p = self.read_fds.get();
+    let read_fds = unsafe { &mut *p };
+
+    let p = self.timer_fds.get();
+    let timer_fds = unsafe { &mut *p };
+
+    if read_fds.done {
+      println!("ReadFuture completed with {}", read_fds.res);
+
+      match read_fds.op {
+        fiona::op::Op::Read(ref mut s) => {
+          println!("i should be breaking the cycle here tho...");
+          s.timer_fds = None;
+        }
+        _ => panic!(""),
       }
 
-      let mut buf = match fds.op {
+      if read_fds.res < 0 {
+        return std::task::Poll::Ready(Err(fiona::libc::errno(-read_fds.res)));
+      }
+
+      let mut buf = match read_fds.op {
         fiona::op::Op::Read(ref mut s) => s.buf.take().unwrap(),
         _ => {
           panic!("Read op was completed but the internal Op is an invalid type")
@@ -291,40 +318,48 @@ impl<'a> std::future::Future for ReadFuture<'a> {
 
       #[allow(clippy::cast_sign_loss)]
       unsafe {
-        buf.set_len(buf.len() + fds.res as usize);
+        buf.set_len(buf.len() + read_fds.res as usize);
       }
 
       return std::task::Poll::Ready(Ok(buf));
     }
 
-    if fds.initiated {
+    if read_fds.initiated {
+      assert!(timer_fds.initiated);
       return std::task::Poll::Pending;
     }
 
-    fds.initiated = true;
-
-    let sockfd = fds.fd;
-
     let ioc_state = unsafe { &mut *self.ex.get_state() };
-    fds.task = Some(ioc_state.task_ctx.unwrap());
+    read_fds.task = Some(ioc_state.task_ctx.unwrap());
+    timer_fds.task = Some(ioc_state.task_ctx.unwrap());
 
     let ring = ioc_state.ring;
-    let sqe = unsafe { fiona::liburing::make_sqe(ring) };
 
-    let (buf, nbytes, offset) = match fds.op {
+    let sockfd = read_fds.fd;
+
+    let read_sqe = unsafe { fiona::liburing::make_sqe(ring) };
+
+    let (buf, nbytes, offset) = match read_fds.op {
       fiona::op::Op::Read(ref mut s) => match s.buf {
         Some(ref mut b) => (b.as_mut_ptr(), b.capacity(), b.len()),
-        _ => panic!("In ReadFuture, buf was null when it should've been Some"),
+        _ => panic!(""),
       },
-      _ => panic!("Incorrect operation type in ReadFuture"),
+      _ => panic!(""),
     };
 
-    let user_data = self.fds.clone().into_raw().cast::<fiona::libc::c_void>();
-    unsafe { fiona::liburing::io_uring_sqe_set_data(sqe, user_data) };
+    let user_data = self
+      .read_fds
+      .clone()
+      .into_raw()
+      .cast::<fiona::libc::c_void>();
+
+    unsafe { fiona::liburing::io_uring_sqe_set_data(read_sqe, user_data) };
+
+    println!("scheduling io_uring_prep_read");
 
     unsafe {
       fiona::liburing::io_uring_prep_read(
-        sqe,
+        read_sqe,
         sockfd,
         buf.cast::<fiona::libc::c_void>(),
         nbytes as u32,
@@ -332,7 +367,62 @@ impl<'a> std::future::Future for ReadFuture<'a> {
       );
     }
 
+    // unsafe { fiona::liburing::io_uring_sqe_set_flags(read_sqe, 1_u32 << 2) };
+
+    // let cancel_timer_sqe = unsafe { fiona::liburing::make_sqe(ring) };
+    // unsafe {
+    //   fiona::liburing::io_uring_prep_cancel(
+    //     cancel_timer_sqe,
+    //     self.timer_fds.get().cast::<fiona::libc::c_void>(),
+    //     0,
+    //   );
+    // }
+
+    // println!(
+    //   "ReadFuture is going to cancel timer: {:?}",
+    //   self.timer_fds.get()
+    // );
+
+    let ts = match timer_fds.op {
+      fiona::op::Op::Timeout(ref mut ts) => {
+        std::ptr::addr_of_mut!(ts.tspec)
+      }
+      _ => panic!("invalid op type in TimerFuture"),
+    };
+
+    let user_data = self
+      .timer_fds
+      .clone()
+      .into_raw()
+      .cast::<fiona::libc::c_void>();
+
+    println!(
+      "Timer in ReadFuture will use this for timeout op: {:?}",
+      user_data
+    );
+
+    println!("scheduling timer sqe in ReadFuture: {:?}", user_data);
+
+    let timer_sqe = unsafe { fiona::liburing::make_sqe(ring) };
+    unsafe {
+      fiona::liburing::io_uring_sqe_set_data(timer_sqe, user_data);
+      fiona::liburing::io_uring_prep_timeout(timer_sqe, ts, 0, 0);
+      fiona::liburing::io_uring_sqe_set_flags(timer_sqe, 1_u32 << 3);
+    }
+
+    let cancel_read_sqe = unsafe { fiona::liburing::make_sqe(ring) };
+    unsafe {
+      fiona::liburing::io_uring_prep_cancel(
+        cancel_read_sqe,
+        self.read_fds.get().cast::<fiona::libc::c_void>(),
+        0,
+      );
+    }
+
     unsafe { fiona::liburing::io_uring_submit(ring) };
+
+    read_fds.initiated = true;
+    timer_fds.initiated = true;
 
     std::task::Poll::Pending
   }
@@ -453,6 +543,7 @@ impl Drop for Acceptor {
 
 impl Drop for Socket {
   fn drop(&mut self) {
+    println!("dropping Socket now!");
     if self.fd != -1 {
       unsafe { fiona::libc::close(self.fd) };
     }
@@ -509,11 +600,7 @@ impl Socket {
       }),
     );
 
-    let t = self.timeout;
-    let (tv_sec, tv_nsec) = (
-      i64::try_from(t.as_secs()).unwrap(),
-      i64::try_from(t.subsec_nanos()).unwrap(),
-    );
+    let (tv_sec, tv_nsec) = get_tv_sec(self.timeout);
 
     let timer_fds = fiona::op::FdState::new(
       -1,
@@ -550,14 +637,33 @@ impl Socket {
   }
 
   pub fn async_read(&mut self, buf: Vec<u8>) -> ReadFuture {
-    let fds = fiona::op::FdState::new(
+    let read_fds = fiona::op::FdState::new(
       self.fd,
-      fiona::op::Op::Read(fiona::op::ReadState { buf: Some(buf) }),
+      fiona::op::Op::Read(fiona::op::ReadState {
+        buf: Some(buf),
+        timer_fds: None,
+      }),
     );
+
+    let (tv_sec, tv_nsec) = get_tv_sec(self.timeout);
+    let timer_fds = fiona::op::FdState::new(
+      -1,
+      fiona::op::Op::Timeout(fiona::op::TimeoutState {
+        op_fds: Some(read_fds.clone()),
+        tspec: fiona::libc::kernel_timespec { tv_sec, tv_nsec },
+      }),
+    );
+
+    let fds = unsafe { &mut *read_fds.get() };
+    match fds.op {
+      fiona::op::Op::Read(ref mut s) => s.timer_fds = Some(timer_fds.clone()),
+      _ => panic!(""),
+    }
 
     ReadFuture {
       ex: self.ex.clone(),
-      fds,
+      read_fds,
+      timer_fds,
       _m: std::marker::PhantomData,
     }
   }
