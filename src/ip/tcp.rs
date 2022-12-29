@@ -251,7 +251,7 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
       .into_raw()
       .cast::<fiona::libc::c_void>();
 
-    println!("scheduling timer sqe in ConnectFuture: {:?}", user_data);
+    // println!("scheduling timer sqe in ConnectFuture: {:?}", user_data);
 
     unsafe {
       fiona::liburing::io_uring_sqe_set_data(timer_sqe, user_data);
@@ -286,7 +286,7 @@ impl<'a> std::future::Future for ReadFuture<'a> {
     self: std::pin::Pin<&mut Self>,
     _cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Self::Output> {
-    println!("in ReadFuture");
+    // println!("in ReadFuture");
 
     let p = self.read_fds.get();
     let read_fds = unsafe { &mut *p };
@@ -295,11 +295,11 @@ impl<'a> std::future::Future for ReadFuture<'a> {
     let timer_fds = unsafe { &mut *p };
 
     if read_fds.done {
-      println!("ReadFuture completed with {}", read_fds.res);
+      // println!("ReadFuture completed with {}", read_fds.res);
 
       match read_fds.op {
         fiona::op::Op::Read(ref mut s) => {
-          println!("i should be breaking the cycle here tho...");
+          // println!("i should be breaking the cycle here tho...");
           s.timer_fds = None;
         }
         _ => panic!(""),
@@ -355,7 +355,7 @@ impl<'a> std::future::Future for ReadFuture<'a> {
 
     unsafe { fiona::liburing::io_uring_sqe_set_data(read_sqe, user_data) };
 
-    println!("scheduling io_uring_prep_read");
+    // println!("scheduling io_uring_prep_read");
 
     unsafe {
       fiona::liburing::io_uring_prep_read(
@@ -396,12 +396,12 @@ impl<'a> std::future::Future for ReadFuture<'a> {
       .into_raw()
       .cast::<fiona::libc::c_void>();
 
-    println!(
-      "Timer in ReadFuture will use this for timeout op: {:?}",
-      user_data
-    );
+    // println!(
+    //   "Timer in ReadFuture will use this for timeout op: {:?}",
+    //   user_data
+    // );
 
-    println!("scheduling timer sqe in ReadFuture: {:?}", user_data);
+    // println!("scheduling timer sqe in ReadFuture: {:?}", user_data);
 
     let timer_sqe = unsafe { fiona::liburing::make_sqe(ring) };
     unsafe {
@@ -543,7 +543,7 @@ impl Drop for Acceptor {
 
 impl Drop for Socket {
   fn drop(&mut self) {
-    println!("dropping Socket now!");
+    // println!("dropping Socket now!");
     if self.fd != -1 {
       unsafe { fiona::libc::close(self.fd) };
     }
