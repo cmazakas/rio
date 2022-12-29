@@ -184,6 +184,10 @@ impl IoContext {
     let ring = state.ring;
 
     let mut buf = std::mem::MaybeUninit::<*mut Task>::uninit();
+    unsafe {
+      std::ptr::write_bytes(std::ptr::addr_of_mut!(buf), 0, 1);
+    }
+
     #[allow(clippy::cast_possible_truncation)]
     unsafe {
       let sqe = liburing::make_sqe(ring);
@@ -224,6 +228,7 @@ impl IoContext {
         }
 
         let p = unsafe { buf.assume_init_read() };
+        assert!(!p.is_null());
 
         #[allow(clippy::cast_possible_truncation)]
         unsafe {
@@ -241,7 +246,7 @@ impl IoContext {
         p
       } else {
         let p = p.cast::<op::FdStateImpl>();
-        println!("the following task came in: {:?}", p);
+        // println!("the following task came in: {:?}", p);
 
         let fds = unsafe { op::FdState::from_raw(p) };
         let p = fds.get();
@@ -250,10 +255,10 @@ impl IoContext {
           (*p).done = true;
           (*p).res = res;
 
-          println!("res is: {res}");
-          if res < 0 {
-            println!("errno: {:?}", libc::errno(-res));
-          }
+          // println!("res is: {res}");
+          // if res < 0 {
+          //   println!("errno: {:?}", libc::errno(-res));
+          // }
         }
         unsafe { (*p).task.take().unwrap() }
       };
@@ -292,9 +297,9 @@ impl IoContext {
     while 0 == unsafe { liburing::io_uring_peek_cqe(ring, &mut cqe) } {
       assert!(!cqe.is_null());
 
-      println!("leftover cqe is: {:?}", unsafe {
-        liburing::io_uring_cqe_get_data(cqe)
-      });
+      // println!("leftover cqe is: {:?}", unsafe {
+      //   liburing::io_uring_cqe_get_data(cqe)
+      // });
 
       let p = unsafe { liburing::io_uring_cqe_get_data(cqe) };
       if !p.is_null() {
