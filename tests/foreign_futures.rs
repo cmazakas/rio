@@ -6,6 +6,17 @@ struct TimerFuture {
   join_handle: Option<std::thread::JoinHandle<()>>,
 }
 
+impl Drop for TimerFuture {
+  fn drop(&mut self) {
+    match &mut self.join_handle {
+      None => {}
+      Some(_) => {
+        self.join_handle.take().unwrap().join().unwrap();
+      }
+    }
+  }
+}
+
 impl std::future::Future for TimerFuture {
   type Output = ();
 
@@ -13,7 +24,7 @@ impl std::future::Future for TimerFuture {
     mut self: std::pin::Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Self::Output> {
-    match &self.join_handle {
+    match self.join_handle {
       None => {
         let waker = cx.waker().clone();
         self.join_handle = Some(std::thread::spawn(move || {
@@ -23,7 +34,7 @@ impl std::future::Future for TimerFuture {
 
         std::task::Poll::Pending
       }
-      Some(handle) => {
+      Some(ref handle) => {
         if handle.is_finished() {
           let handle = self.join_handle.take().unwrap();
           handle.join().unwrap();
@@ -162,33 +173,33 @@ fn mixed_futures() {
   assert_eq!(unsafe { NUM_RUNS }, 1);
 }
 
-#[test]
-#[ignore]
-fn forget() {
-  static mut NUM_RUNS: i32 = 0;
+// #[test]
+// #[ignore]
+// fn forget() {
+//   static mut NUM_RUNS: i32 = 0;
 
-  let mut ioc = fiona::IoContext::new();
-  ioc.post({
-    Box::pin(async move {
-      let mut f1 = TimerFuture { join_handle: None };
+//   let mut ioc = fiona::IoContext::new();
+//   ioc.post({
+//     Box::pin(async move {
+//       let mut f1 = TimerFuture { join_handle: None };
 
-      let waker = fiona::WakerFuture {}.await;
-      let mut cx = std::task::Context::from_waker(&waker);
+//       let waker = fiona::WakerFuture {}.await;
+//       let mut cx = std::task::Context::from_waker(&waker);
 
-      assert!(
-        unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }
-          .is_pending()
-      );
+//       assert!(
+//         unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }
+//           .is_pending()
+//       );
 
-      std::mem::forget(f1);
-      unsafe { NUM_RUNS += 1 };
-    })
-  });
+//       std::mem::forget(f1);
+//       unsafe { NUM_RUNS += 1 };
+//     })
+//   });
 
-  ioc.run();
+//   ioc.run();
 
-  assert_eq!(unsafe { NUM_RUNS }, 1);
-}
+//   assert_eq!(unsafe { NUM_RUNS }, 1);
+// }
 
 #[test]
 #[ignore]
