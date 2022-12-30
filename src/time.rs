@@ -94,10 +94,10 @@ pub struct Timer {
 
 impl Timer {
   #[must_use]
-  pub fn new(ex: fiona::Executor) -> Self {
+  pub fn new(ex: &fiona::Executor) -> Self {
     Self {
       dur: std::time::Duration::default(),
-      ex,
+      ex: ex.clone(),
     }
   }
 

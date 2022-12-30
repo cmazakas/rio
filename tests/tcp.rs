@@ -87,7 +87,7 @@ fn econnrefused_connect_future() {
   let mut ioc = fiona::IoContext::new();
   let ex = ioc.get_executor();
 
-  let mut timer = fiona::time::Timer::new(ex.clone());
+  let mut timer = fiona::time::Timer::new(&ex);
   ioc.post(Box::pin(async move {
     timer.expires_after(std::time::Duration::from_millis(1500));
     timer.async_wait().await.unwrap();
@@ -162,7 +162,7 @@ fn read_timeout() {
 
   ioc.post(Box::pin(async move {
     let _s = acceptor.async_accept().await.unwrap();
-    let mut timer = fiona::time::Timer::new(ex);
+    let mut timer = fiona::time::Timer::new(&ex);
     timer.expires_after(std::time::Duration::from_secs(2));
     timer.async_wait().await.unwrap();
   }));
@@ -196,7 +196,7 @@ fn drop_accept_pending() {
   let mut ioc = fiona::IoContext::new();
   let ex = ioc.get_executor();
 
-  ioc.post(Box::pin(async {
+  ioc.post(Box::pin(async move {
     let mut acceptor = fiona::ip::tcp::Acceptor::new(ex.clone());
     acceptor.listen(LOCALHOST, get_port()).unwrap();
     let mut f = acceptor.async_accept();
@@ -209,7 +209,7 @@ fn drop_accept_pending() {
         .is_pending()
     );
 
-    let mut timer = fiona::time::Timer::new(ex);
+    let mut timer = fiona::time::Timer::new(&ex);
     timer.expires_after(std::time::Duration::from_millis(500));
     timer.async_wait().await.unwrap();
 
@@ -240,7 +240,7 @@ fn cancel_accept() {
     ex.post(Box::pin({
       let ex = ex.clone();
       async move {
-        let mut timer = fiona::time::Timer::new(ex);
+        let mut timer = fiona::time::Timer::new(&ex);
         timer.expires_after(std::time::Duration::from_millis(500));
         timer.async_wait().await.unwrap();
 

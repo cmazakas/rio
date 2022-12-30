@@ -14,7 +14,7 @@ fn timer_stress_test() {
       let ex = ex.clone();
       async move {
         println!("on timer {_idx}");
-        let mut timer = fiona::time::Timer::new(ex);
+        let mut timer = fiona::time::Timer::new(&ex);
         timer.expires_after(std::time::Duration::from_millis(2000));
         timer.async_wait().await.unwrap();
         timer.async_wait().await.unwrap();
