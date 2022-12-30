@@ -123,7 +123,10 @@ impl IoContext {
     (*std::rc::Rc::as_ptr(&self.p)).get()
   }
 
-  pub fn post(&mut self, task: std::pin::Pin<Box<Task>>) {
+  pub fn post<F>(&mut self, task: F)
+  where
+    F: std::future::Future<Output = ()> + 'static,
+  {
     let mut ex = self.get_executor();
     ex.post(task);
   }
@@ -327,7 +330,11 @@ impl Executor {
     unsafe { (*self.get_state()).ring }
   }
 
-  pub fn post(&mut self, mut task: std::pin::Pin<Box<Task>>) {
+  pub fn post<F>(&mut self, task: F)
+  where
+    F: std::future::Future<Output = ()> + 'static,
+  {
+    let mut task = Box::pin(task);
     let state = unsafe { &mut *self.get_state() };
     let taskp = unsafe { task.as_mut().get_unchecked_mut() as *mut _ };
 
