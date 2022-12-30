@@ -497,8 +497,11 @@ impl<'a> std::future::Future for WriteFuture<'a> {
 
 impl Acceptor {
   #[must_use]
-  pub fn new(ex: fiona::Executor) -> Self {
-    Self { fd: -1, ex }
+  pub fn new(ex: &fiona::Executor) -> Self {
+    Self {
+      fd: -1,
+      ex: ex.clone(),
+    }
   }
 
   pub fn listen(
@@ -552,10 +555,10 @@ impl Drop for Socket {
 
 impl Socket {
   #[must_use]
-  pub fn new(ex: fiona::Executor) -> Self {
+  pub fn new(ex: &fiona::Executor) -> Self {
     Self {
       fd: fiona::liburing::make_ipv4_tcp_socket().unwrap(),
-      ex,
+      ex: ex.clone(),
       timeout: std::time::Duration::from_secs(30),
     }
   }
