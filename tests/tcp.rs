@@ -73,8 +73,8 @@ fn tcp_acceptor() {
   let mut ioc = fiona::IoContext::new();
   let ex = ioc.get_executor();
 
-  ioc.post(Box::pin(server(ex.clone(), port)));
-  ioc.post(Box::pin(client(ex, port)));
+  ioc.post(server(ex.clone(), port));
+  ioc.post(client(ex, port));
   ioc.run();
 
   assert_eq!(unsafe { NUM_RUNS }, 2);
@@ -88,15 +88,15 @@ fn econnrefused_connect_future() {
   let ex = ioc.get_executor();
 
   let mut timer = fiona::time::Timer::new(&ex);
-  ioc.post(Box::pin(async move {
+  ioc.post(async move {
     timer.expires_after(std::time::Duration::from_millis(1500));
     timer.async_wait().await.unwrap();
 
     unsafe { NUM_RUNS += 1 };
-  }));
+  });
 
   let mut client = fiona::ip::tcp::Socket::new(&ex);
-  ioc.post(Box::pin(async move {
+  ioc.post(async move {
     let r = client.async_connect(LOCALHOST, get_port()).await;
 
     match r {
@@ -108,7 +108,7 @@ fn econnrefused_connect_future() {
     }
 
     unsafe { NUM_RUNS += 1 };
-  }));
+  });
 
   ioc.run();
   assert_eq!(unsafe { NUM_RUNS }, 2);
@@ -123,7 +123,7 @@ fn connect_timeout() {
 
   let mut client = fiona::ip::tcp::Socket::new(&ex);
   client.timeout = std::time::Duration::from_secs(2);
-  ioc.post(Box::pin(async move {
+  ioc.post(async move {
     // use one of the IP addresses from the test networks:
     // 192.0.2.0/24
     // https://en.wikipedia.org/wiki/Internet_Protocol_version_4#Special-use_addresses
@@ -140,7 +140,7 @@ fn connect_timeout() {
     // println!("do I really get here????");
 
     unsafe { NUM_RUNS += 1 };
-  }));
+  });
 
   ioc.run();
   assert_eq!(unsafe { NUM_RUNS }, 1);
@@ -160,14 +160,14 @@ fn read_timeout() {
 
   let mut client = fiona::ip::tcp::Socket::new(&ex);
 
-  ioc.post(Box::pin(async move {
+  ioc.post(async move {
     let _s = acceptor.async_accept().await.unwrap();
     let mut timer = fiona::time::Timer::new(&ex);
     timer.expires_after(std::time::Duration::from_secs(2));
     timer.async_wait().await.unwrap();
-  }));
+  });
 
-  ioc.post(Box::pin(async move {
+  ioc.post(async move {
     client.timeout = std::time::Duration::from_secs(1);
     client.async_connect(LOCALHOST, port).await.unwrap();
 
@@ -183,7 +183,7 @@ fn read_timeout() {
     };
 
     unsafe { NUM_RUNS += 1 };
-  }));
+  });
 
   ioc.run();
   assert_eq!(unsafe { NUM_RUNS }, 1);
@@ -196,7 +196,7 @@ fn drop_accept_pending() {
   let mut ioc = fiona::IoContext::new();
   let ex = ioc.get_executor();
 
-  ioc.post(Box::pin(async move {
+  ioc.post(async move {
     let mut acceptor = fiona::ip::tcp::Acceptor::new(&ex);
     acceptor.listen(LOCALHOST, get_port()).unwrap();
     let mut f = acceptor.async_accept();
@@ -218,7 +218,7 @@ fn drop_accept_pending() {
     timer.async_wait().await.unwrap();
 
     unsafe { NUM_RUNS += 1 };
-  }));
+  });
 
   ioc.run();
   assert_eq!(unsafe { NUM_RUNS }, 1);
@@ -231,13 +231,13 @@ fn cancel_accept() {
   let mut ioc = fiona::IoContext::new();
   let mut ex = ioc.get_executor();
 
-  ioc.post(Box::pin(async move {
+  ioc.post(async move {
     let mut acceptor = fiona::ip::tcp::Acceptor::new(&ex);
     acceptor.listen(LOCALHOST, get_port()).unwrap();
     let f = acceptor.async_accept();
     let c = f.get_cancel_handle();
 
-    ex.post(Box::pin({
+    ex.post({
       let ex = ex.clone();
       async move {
         let mut timer = fiona::time::Timer::new(&ex);
@@ -246,7 +246,7 @@ fn cancel_accept() {
 
         c.cancel();
       }
-    }));
+    });
 
     let result = f.await;
     match result {
@@ -258,7 +258,7 @@ fn cancel_accept() {
     }
 
     unsafe { NUM_RUNS += 1 };
-  }));
+  });
 
   ioc.run();
   assert_eq!(unsafe { NUM_RUNS }, 1);

@@ -60,17 +60,15 @@ fn foreign_timer_future() {
   static mut NUM_RUNS: i32 = 0;
 
   let mut ioc = fiona::IoContext::new();
-  ioc.post({
-    Box::pin(async move {
-      let mut seed = 0_u32;
-      let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
-      TimerFuture {
-        join_handle: None,
-        dur,
-      }
-      .await;
-      unsafe { NUM_RUNS += 1 };
-    })
+  ioc.post(async move {
+    let mut seed = 0_u32;
+    let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
+    TimerFuture {
+      join_handle: None,
+      dur,
+    }
+    .await;
+    unsafe { NUM_RUNS += 1 };
   });
 
   ioc.run();
@@ -84,116 +82,112 @@ fn foreign_multiple_timer_future() {
   static mut NUM_RUNS: i32 = 0;
 
   let mut ioc = fiona::IoContext::new();
-  ioc.post({
-    Box::pin(async move {
-      let mut seed = 0_u32;
-      let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
-      let mut f1 = TimerFuture {
-        join_handle: None,
-        dur,
-      };
+  ioc.post(async move {
+    let mut seed = 0_u32;
+    let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
+    let mut f1 = TimerFuture {
+      join_handle: None,
+      dur,
+    };
 
-      let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
-      let mut f2 = TimerFuture {
-        join_handle: None,
-        dur,
-      };
+    let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
+    let mut f2 = TimerFuture {
+      join_handle: None,
+      dur,
+    };
 
-      let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
-      let mut f3 = TimerFuture {
-        join_handle: None,
-        dur,
-      };
+    let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
+    let mut f3 = TimerFuture {
+      join_handle: None,
+      dur,
+    };
 
-      let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
-      let mut f4 = TimerFuture {
-        join_handle: None,
-        dur,
-      };
+    let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
+    let mut f4 = TimerFuture {
+      join_handle: None,
+      dur,
+    };
 
-      let waker = fiona::WakerFuture {}.await;
-      let mut cx = std::task::Context::from_waker(&waker);
+    let waker = fiona::WakerFuture {}.await;
+    let mut cx = std::task::Context::from_waker(&waker);
 
-      assert!(
-        unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }
-          .is_pending()
-      );
-      assert!(
-        unsafe { std::pin::Pin::new_unchecked(&mut f2).poll(&mut cx) }
-          .is_pending()
-      );
-      assert!(
-        unsafe { std::pin::Pin::new_unchecked(&mut f3).poll(&mut cx) }
-          .is_pending()
-      );
-      assert!(
-        unsafe { std::pin::Pin::new_unchecked(&mut f4).poll(&mut cx) }
-          .is_pending()
-      );
+    assert!(
+      unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }
+        .is_pending()
+    );
+    assert!(
+      unsafe { std::pin::Pin::new_unchecked(&mut f2).poll(&mut cx) }
+        .is_pending()
+    );
+    assert!(
+      unsafe { std::pin::Pin::new_unchecked(&mut f3).poll(&mut cx) }
+        .is_pending()
+    );
+    assert!(
+      unsafe { std::pin::Pin::new_unchecked(&mut f4).poll(&mut cx) }
+        .is_pending()
+    );
 
-      f4.await;
-      f2.await;
-      f1.await;
-      f3.await;
+    f4.await;
+    f2.await;
+    f1.await;
+    f3.await;
 
-      unsafe { NUM_RUNS += 1 };
-    })
+    unsafe { NUM_RUNS += 1 };
   });
 
-  ioc.post({
-    Box::pin(async move {
-      let mut seed = 0_u32;
-      let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
-      let mut f1 = TimerFuture {
-        join_handle: None,
-        dur,
-      };
+  ioc.post(async move {
+    let mut seed = 0_u32;
+    let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
+    let mut f1 = TimerFuture {
+      join_handle: None,
+      dur,
+    };
 
-      let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
-      let mut f2 = TimerFuture {
-        join_handle: None,
-        dur,
-      };
+    let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
+    let mut f2 = TimerFuture {
+      join_handle: None,
+      dur,
+    };
 
-      let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
-      let mut f3 = TimerFuture {
-        join_handle: None,
-        dur,
-      };
+    let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
+    let mut f3 = TimerFuture {
+      join_handle: None,
+      dur,
+    };
 
-      let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
-      let mut f4 = TimerFuture {
-        join_handle: None,
-        dur,
-      };
+    let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
+    let mut f4 = TimerFuture {
+      join_handle: None,
+      dur,
+    };
 
-      let waker = fiona::WakerFuture {}.await;
-      let mut cx = std::task::Context::from_waker(&waker);
+    let waker = fiona::WakerFuture {}.await;
+    let mut cx = std::task::Context::from_waker(&waker);
 
-      assert!(
-        unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }
-          .is_pending()
-      );
-      assert!(
-        unsafe { std::pin::Pin::new_unchecked(&mut f2).poll(&mut cx) }
-          .is_pending()
-      );
-      assert!(
-        unsafe { std::pin::Pin::new_unchecked(&mut f3).poll(&mut cx) }
-          .is_pending()
-      );
-      assert!(
-        unsafe { std::pin::Pin::new_unchecked(&mut f4).poll(&mut cx) }
-          .is_pending()
-      );
+    assert!(
+      unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }
+        .is_pending()
+    );
+    assert!(
+      unsafe { std::pin::Pin::new_unchecked(&mut f2).poll(&mut cx) }
+        .is_pending()
+    );
+    assert!(
+      unsafe { std::pin::Pin::new_unchecked(&mut f3).poll(&mut cx) }
+        .is_pending()
+    );
+    assert!(
+      unsafe { std::pin::Pin::new_unchecked(&mut f4).poll(&mut cx) }
+        .is_pending()
+    );
 
-      f1.await;
-      f2.await;
-      f3.await;
-      f4.await;
+    f1.await;
+    f2.await;
+    f3.await;
+    f4.await;
 
-      unsafe { NUM_RUNS += 1 };
-    })
+    unsafe { NUM_RUNS += 1 };
   });
 
   ioc.run();
@@ -207,25 +201,23 @@ fn mixed_futures() {
   static mut NUM_RUNS: i32 = 0;
 
   let mut ioc = fiona::IoContext::new();
-  ioc.post({
-    let ex = ioc.get_executor();
-    Box::pin(async move {
-      let mut timer = fiona::time::Timer::new(&ex);
-      timer.expires_after(std::time::Duration::from_millis(500));
-      timer.async_wait().await.unwrap();
+  let ex = ioc.get_executor();
+  ioc.post(async move {
+    let mut timer = fiona::time::Timer::new(&ex);
+    timer.expires_after(std::time::Duration::from_millis(500));
+    timer.async_wait().await.unwrap();
 
-      let mut seed = 0_u32;
-      let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
+    let mut seed = 0_u32;
+    let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
 
-      TimerFuture {
-        join_handle: None,
-        dur,
-      }
-      .await;
+    TimerFuture {
+      join_handle: None,
+      dur,
+    }
+    .await;
 
-      timer.async_wait().await.unwrap();
-      unsafe { NUM_RUNS += 1 };
-    })
+    timer.async_wait().await.unwrap();
+    unsafe { NUM_RUNS += 1 };
   });
 
   ioc.run();
@@ -267,26 +259,24 @@ fn drop() {
   static mut NUM_RUNS: i32 = 0;
 
   let mut ioc = fiona::IoContext::new();
-  ioc.post({
-    Box::pin(async move {
-      let mut seed = 0_u32;
-      let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
-      let mut f1 = TimerFuture {
-        join_handle: None,
-        dur,
-      };
+  ioc.post(async move {
+    let mut seed = 0_u32;
+    let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
+    let mut f1 = TimerFuture {
+      join_handle: None,
+      dur,
+    };
 
-      let waker = fiona::WakerFuture {}.await;
-      let mut cx = std::task::Context::from_waker(&waker);
+    let waker = fiona::WakerFuture {}.await;
+    let mut cx = std::task::Context::from_waker(&waker);
 
-      assert!(
-        unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }
-          .is_pending()
-      );
+    assert!(
+      unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }
+        .is_pending()
+    );
 
-      std::mem::drop(f1);
-      unsafe { NUM_RUNS += 1 };
-    })
+    std::mem::drop(f1);
+    unsafe { NUM_RUNS += 1 };
   });
 
   ioc.run();
