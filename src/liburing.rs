@@ -52,6 +52,11 @@ extern "C" {
   pub fn io_uring_sqe_set_data(sqe: *mut io_uring_sqe, data: *mut libc::c_void);
   pub fn io_uring_cqe_get_data(cqe: *const io_uring_cqe) -> *mut libc::c_void;
   pub fn io_uring_sqe_set_flags(sqe: *mut io_uring_sqe, flags: u32);
+  pub fn io_uring_prep_link_timeout(
+    sqe: *mut io_uring_sqe,
+    ts: *mut libc::kernel_timespec,
+    flags: u32,
+  );
 
   pub fn io_uring_prep_accept(
     sqe: *mut io_uring_sqe,

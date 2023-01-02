@@ -3,9 +3,14 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/timerfd.h>
+#include <sys/time.h>
+
 #include <netinet/in.h>
 #include <netinet/ip.h>
+#include <netinet/tcp.h>
+
 #include <arpa/inet.h>
+
 #include <linux/time_types.h>
 
 #include <assert.h>

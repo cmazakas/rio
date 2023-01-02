@@ -8,7 +8,8 @@
   clippy::missing_errors_doc,
   clippy::match_wildcard_for_single_variants,
   clippy::cast_possible_truncation,
-  clippy::too_many_lines
+  clippy::too_many_lines,
+  clippy::cast_sign_loss
 )]
 #![allow(non_camel_case_types)]
 
