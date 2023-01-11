@@ -66,7 +66,7 @@ extern "C" {
   pub fn io_uring_prep_connect(
     sqe: *mut io_uring_sqe,
     sockfd: i32,
-    addr: *const fiona::libc::sockaddr,
+    addr: *const libc::sockaddr,
     addrlen: u32,
   );
 

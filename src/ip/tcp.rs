@@ -211,7 +211,7 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
       fiona::liburing::io_uring_prep_connect(
         connect_sqe,
         connect_fds.fd,
-        addr.cast::<fiona::libc::sockaddr>(),
+        addr.cast::<libc::sockaddr>(),
         addrlen,
       );
     }
@@ -423,7 +423,7 @@ impl Acceptor {
 impl Drop for Acceptor {
   fn drop(&mut self) {
     if self.fd >= 0 {
-      unsafe { fiona::libc::close(self.fd) };
+      unsafe { libc::close(self.fd) };
     }
   }
 }
@@ -431,7 +431,7 @@ impl Drop for Acceptor {
 impl Drop for Socket {
   fn drop(&mut self) {
     if self.fd != -1 {
-      unsafe { fiona::libc::close(self.fd) };
+      unsafe { libc::close(self.fd) };
     }
   }
 }

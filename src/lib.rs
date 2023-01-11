@@ -59,7 +59,7 @@ impl std::task::Wake for PipeWaker {
 
     unsafe {
       let taskp = *self.task.value.get();
-      libc::write(
+      ext_libc::write(
         *fd_guard,
         std::ptr::addr_of!(taskp).cast::<ext_libc::c_void>(),
         std::mem::size_of::<*mut Task>(),
@@ -159,8 +159,8 @@ impl IoContext {
     impl Drop for PipeGuard {
       fn drop(&mut self) {
         unsafe {
-          libc::close(self.pipefd[0]);
-          libc::close(self.pipefd[1]);
+          ext_libc::close(self.pipefd[0]);
+          ext_libc::close(self.pipefd[1]);
         };
       }
     }
