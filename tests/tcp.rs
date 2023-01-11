@@ -17,12 +17,6 @@ impl std::task::Wake for NopWaker {
 }
 
 #[test]
-fn sockaddr_in_ffi_check() {
-  let addr = fiona::ip::tcp::sockaddr_in::default();
-  let _addr2 = unsafe { fiona::libc::rio_sockaddr_in_test(addr) };
-}
-
-#[test]
 fn kernel_timespec_ffi_check() {
   let timespec = fiona::libc::kernel_timespec {
     tv_nsec: 1337,

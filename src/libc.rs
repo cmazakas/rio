@@ -1,4 +1,4 @@
-use crate as fiona;
+extern crate libc;
 
 #[repr(u8)]
 pub enum c_void {
@@ -21,13 +21,8 @@ extern "C" {
   pub fn close(fd: i32) -> i32;
   pub fn errno_to_int(e: i32) -> i32;
   pub fn write(fd: i32, buf: *const c_void, count: usize);
-  pub fn rio_sockaddr_in_test(
-    addr: fiona::ip::tcp::sockaddr_in,
-  ) -> fiona::ip::tcp::sockaddr_in;
-  pub fn rio_make_sockaddr_in(
-    ipv4_addr: u32,
-    port: u16,
-  ) -> fiona::ip::tcp::sockaddr_in;
+  pub fn rio_sockaddr_in_test(addr: libc::sockaddr_in) -> libc::sockaddr_in;
+  pub fn rio_make_sockaddr_in(ipv4_addr: u32, port: u16) -> libc::sockaddr_in;
 
   pub fn rio_timespec_test(ts: kernel_timespec) -> kernel_timespec;
 }

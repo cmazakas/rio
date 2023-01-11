@@ -1,3 +1,5 @@
+extern crate libc;
+
 use crate as fiona;
 
 #[repr(C)]
@@ -476,10 +478,19 @@ impl Socket {
   }
 
   pub fn async_connect(&mut self, ipv4_addr: u32, port: u16) -> ConnectFuture {
+    let addr_in = libc::sockaddr_in {
+      sin_family: libc::AF_INET as u16,
+      sin_port: port.to_be(),
+      sin_addr: libc::in_addr {
+        s_addr: ipv4_addr.to_be(),
+      },
+      sin_zero: Default::default(),
+    };
+
     let connect_fds = fiona::op::FdState::new(
       self.fd,
       fiona::op::Op::Connect(fiona::op::ConnectState {
-        addr_in: unsafe { fiona::libc::rio_make_sockaddr_in(ipv4_addr, port) },
+        addr_in,
         timer_fds: None,
       }),
     );

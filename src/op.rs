@@ -1,3 +1,5 @@
+extern crate libc;
+
 use crate as fiona;
 
 #[derive(Clone)]
@@ -41,7 +43,7 @@ pub struct AcceptState {
 }
 
 pub struct ConnectState {
-  pub addr_in: fiona::ip::tcp::sockaddr_in,
+  pub addr_in: libc::sockaddr_in,
   pub timer_fds: Option<FdState>,
 }
 
