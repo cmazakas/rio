@@ -13,6 +13,8 @@
 )]
 #![allow(non_camel_case_types)]
 
+extern crate libc as ext_libc;
+
 pub mod ip;
 pub mod libc;
 pub mod liburing;
@@ -59,7 +61,7 @@ impl std::task::Wake for PipeWaker {
       let taskp = *self.task.value.get();
       libc::write(
         *fd_guard,
-        std::ptr::addr_of!(taskp).cast::<libc::c_void>(),
+        std::ptr::addr_of!(taskp).cast::<ext_libc::c_void>(),
         std::mem::size_of::<*mut Task>(),
       );
     }
@@ -214,10 +216,7 @@ impl IoContext {
       let e = unsafe { liburing::io_uring_wait_cqe(ring, &mut cqe) };
       if e != 0 {
         assert!(e < 0);
-        panic!(
-          "waiting internally for the cqe failed with: {:?}",
-          libc::errno(-e)
-        );
+        panic!("waiting internally for the cqe failed with: {:?}", -e);
       }
       assert!(!cqe.is_null());
 
@@ -353,7 +352,7 @@ impl Executor {
 
     let ring = state.ring;
     let sqe = unsafe { liburing::make_sqe(ring) };
-    let user_data = fds.into_raw().cast::<libc::c_void>();
+    let user_data = fds.into_raw().cast::<ext_libc::c_void>();
 
     unsafe { liburing::io_uring_sqe_set_data(sqe, user_data) };
     unsafe { liburing::io_uring_prep_nop(sqe) };

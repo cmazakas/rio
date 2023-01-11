@@ -1,4 +1,6 @@
-use crate::{self as fiona, libc, op::CancelHandle};
+extern crate libc;
+
+use crate::{self as fiona, op::CancelHandle};
 
 pub struct TimerFuture<'a> {
   ex: fiona::Executor,
@@ -37,7 +39,7 @@ impl<'a> Drop for TimerFuture<'a> {
 }
 
 impl<'a> std::future::Future for TimerFuture<'a> {
-  type Output = Result<(), libc::Errno>;
+  type Output = Result<(), i32>;
 
   fn poll(
     self: std::pin::Pin<&mut Self>,
@@ -51,8 +53,8 @@ impl<'a> std::future::Future for TimerFuture<'a> {
       }
 
       if fds.res < 0 {
-        match fiona::libc::errno(-fds.res) {
-          libc::Errno::ETIME => {}
+        match -fds.res {
+          libc::ETIME => {}
           err => return std::task::Poll::Ready(Err(err)),
         }
       }
@@ -73,7 +75,7 @@ impl<'a> std::future::Future for TimerFuture<'a> {
     let ring = ioc_state.ring;
     let sqe = unsafe { fiona::liburing::make_sqe(ring) };
 
-    let user_data = self.fds.clone().into_raw().cast::<fiona::libc::c_void>();
+    let user_data = self.fds.clone().into_raw().cast::<libc::c_void>();
 
     unsafe {
       fiona::liburing::io_uring_sqe_set_data(sqe, user_data);

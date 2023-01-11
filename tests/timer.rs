@@ -470,7 +470,7 @@ fn cancellation() {
 
     let result = f.await;
     match result.expect_err("Operation didn't report cancellation properly!") {
-      fiona::libc::Errno::ECANCELED => {}
+      libc::ECANCELED => {}
       _ => panic!("Incorrect error type returned, should be ECANCELED"),
     }
 

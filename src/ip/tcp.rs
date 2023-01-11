@@ -73,11 +73,7 @@ unsafe fn drop_cancel(
     let ring = (*ioc).ring;
     unsafe {
       let sqe = fiona::liburing::make_sqe(ring);
-      fiona::liburing::io_uring_prep_cancel(
-        sqe,
-        p.cast::<fiona::libc::c_void>(),
-        0,
-      );
+      fiona::liburing::io_uring_prep_cancel(sqe, p.cast::<libc::c_void>(), 0);
       fiona::liburing::io_uring_submit(ring);
     }
   }
@@ -108,7 +104,7 @@ impl<'a> Drop for WriteFuture<'a> {
 }
 
 impl<'a> std::future::Future for AcceptFuture<'a> {
-  type Output = Result<Socket, fiona::libc::Errno>;
+  type Output = Result<Socket, i32>;
   fn poll(
     self: std::pin::Pin<&mut Self>,
     _cx: &mut std::task::Context<'_>,
@@ -123,7 +119,7 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
 
       let ring = unsafe { (*self.ex.get_state()).ring };
       let sqe = unsafe { fiona::liburing::make_sqe(ring) };
-      let user_data = self.fds.clone().into_raw().cast::<fiona::libc::c_void>();
+      let user_data = self.fds.clone().into_raw().cast::<libc::c_void>();
 
       let (addr, addrlen) = match unsafe { &mut (*p).op } {
         fiona::op::Op::Accept(ref mut s) => (
@@ -147,7 +143,7 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
 
     let fd = unsafe { (*p).res };
     if fd < 0 {
-      std::task::Poll::Ready(Err(fiona::libc::errno(-fd)))
+      std::task::Poll::Ready(Err(-fd))
     } else {
       // let addr = match unsafe { &mut (*p).op } {
       //   fiona::op::Op::Accept(ref mut s) => s.addr_in,
@@ -166,7 +162,7 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
 }
 
 impl<'a> std::future::Future for ConnectFuture<'a> {
-  type Output = Result<(), fiona::libc::Errno>;
+  type Output = Result<(), i32>;
   fn poll(
     self: std::pin::Pin<&mut Self>,
     _cx: &mut std::task::Context<'_>,
@@ -183,9 +179,7 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
       }
 
       if connect_fds.res < 0 {
-        return std::task::Poll::Ready(Err(fiona::libc::errno(
-          -connect_fds.res,
-        )));
+        return std::task::Poll::Ready(Err(-connect_fds.res));
       }
 
       return std::task::Poll::Ready(Ok(()));
@@ -210,11 +204,7 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
       _ => panic!(""),
     };
 
-    let user_data = self
-      .connect_fds
-      .clone()
-      .into_raw()
-      .cast::<fiona::libc::c_void>();
+    let user_data = self.connect_fds.clone().into_raw().cast::<libc::c_void>();
 
     unsafe { fiona::liburing::io_uring_sqe_set_data(connect_sqe, user_data) };
     unsafe {
@@ -245,7 +235,7 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
 }
 
 impl<'a> std::future::Future for ReadFuture<'a> {
-  type Output = Result<Vec<u8>, fiona::libc::Errno>;
+  type Output = Result<Vec<u8>, i32>;
 
   fn poll(
     self: std::pin::Pin<&mut Self>,
@@ -256,7 +246,7 @@ impl<'a> std::future::Future for ReadFuture<'a> {
 
     if read_fds.done {
       if read_fds.res < 0 {
-        return std::task::Poll::Ready(Err(fiona::libc::errno(-read_fds.res)));
+        return std::task::Poll::Ready(Err(-read_fds.res));
       }
 
       let mut buf = match read_fds.op {
@@ -289,11 +279,7 @@ impl<'a> std::future::Future for ReadFuture<'a> {
       _ => panic!(""),
     };
 
-    let user_data = self
-      .read_fds
-      .clone()
-      .into_raw()
-      .cast::<fiona::libc::c_void>();
+    let user_data = self.read_fds.clone().into_raw().cast::<libc::c_void>();
 
     unsafe { fiona::liburing::io_uring_sqe_set_data(read_sqe, user_data) };
 
@@ -301,7 +287,7 @@ impl<'a> std::future::Future for ReadFuture<'a> {
       fiona::liburing::io_uring_prep_read(
         read_sqe,
         sockfd,
-        buf.cast::<fiona::libc::c_void>(),
+        buf.cast::<libc::c_void>(),
         nbytes as u32,
         offset as u64,
       );
@@ -324,7 +310,7 @@ impl<'a> std::future::Future for ReadFuture<'a> {
 }
 
 impl<'a> std::future::Future for WriteFuture<'a> {
-  type Output = Result<Vec<u8>, fiona::libc::Errno>;
+  type Output = Result<Vec<u8>, i32>;
   fn poll(
     self: std::pin::Pin<&mut Self>,
     _cx: &mut std::task::Context<'_>,
@@ -334,7 +320,7 @@ impl<'a> std::future::Future for WriteFuture<'a> {
 
     if fds.done {
       if fds.res < 0 {
-        return std::task::Poll::Ready(Err(fiona::libc::errno(-fds.res)));
+        return std::task::Poll::Ready(Err(-fds.res));
       }
 
       let buf = match fds.op {
@@ -369,11 +355,7 @@ impl<'a> std::future::Future for WriteFuture<'a> {
       _ => panic!("Incorrect operation type in WriteFuture"),
     };
 
-    let user_data = self
-      .write_fds
-      .clone()
-      .into_raw()
-      .cast::<fiona::libc::c_void>();
+    let user_data = self.write_fds.clone().into_raw().cast::<libc::c_void>();
 
     unsafe { fiona::liburing::io_uring_sqe_set_data(write_sqe, user_data) };
 
@@ -381,7 +363,7 @@ impl<'a> std::future::Future for WriteFuture<'a> {
       fiona::liburing::io_uring_prep_write(
         write_sqe,
         sockfd,
-        buf.cast::<fiona::libc::c_void>(),
+        buf.cast::<libc::c_void>(),
         nbytes as u32,
         offset as u64,
       );
@@ -410,11 +392,7 @@ impl Acceptor {
     }
   }
 
-  pub fn listen(
-    &mut self,
-    ipv4_addr: u32,
-    port: u16,
-  ) -> Result<(), fiona::libc::Errno> {
+  pub fn listen(&mut self, ipv4_addr: u32, port: u16) -> Result<(), i32> {
     match fiona::liburing::make_ipv4_tcp_server_socket(ipv4_addr, port) {
       Ok(fd) => {
         self.fd = fd;

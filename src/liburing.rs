@@ -1,6 +1,6 @@
 #![allow(clippy::missing_safety_doc)]
 
-use crate::{self as fiona, libc};
+use crate::{self as fiona};
 
 #[repr(C)]
 pub struct io_uring {
@@ -51,7 +51,7 @@ extern "C" {
   pub fn io_uring_sqe_set_flags(sqe: *mut io_uring_sqe, flags: u32);
   pub fn io_uring_prep_link_timeout(
     sqe: *mut io_uring_sqe,
-    ts: *mut libc::kernel_timespec,
+    ts: *mut fiona::libc::kernel_timespec,
     flags: u32,
   );
 
@@ -81,7 +81,7 @@ extern "C" {
   pub fn io_uring_prep_write(
     sqe: *mut io_uring_sqe,
     fd: i32,
-    buf: *const fiona::libc::c_void,
+    buf: *const libc::c_void,
     nbytes: u32,
     offset: u64,
   );
@@ -123,22 +123,22 @@ pub fn make_pipe(pipefd: &mut [i32; 2]) -> i32 {
 pub fn make_ipv4_tcp_server_socket(
   ipv4_addr: u32,
   port: u16,
-) -> Result<i32, libc::Errno> {
+) -> Result<i32, i32> {
   let mut fd = -1;
   let err =
     unsafe { rio_make_ipv4_tcp_server_socket(ipv4_addr, port, &mut fd) };
 
   match err {
     0 => Ok(fd),
-    e => Err(libc::errno(e)),
+    e => Err(e),
   }
 }
 
-pub fn make_ipv4_tcp_socket() -> Result<i32, libc::Errno> {
+pub fn make_ipv4_tcp_socket() -> Result<i32, i32> {
   let mut fd = -1;
   let err = unsafe { rio_make_ipv4_tcp_socket(&mut fd) };
   match err {
     0 => Ok(fd),
-    e => Err(libc::errno(e)),
+    e => Err(e),
   }
 }

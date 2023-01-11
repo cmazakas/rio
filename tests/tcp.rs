@@ -95,7 +95,7 @@ fn econnrefused_connect_future() {
 
     match r {
       Err(e) => match e {
-        fiona::libc::Errno::ECONNREFUSED => {}
+        libc::ECONNREFUSED => {}
         _ => panic!("incorrect errno value, should be ECONNREFUSED"),
       },
       _ => panic!("expected an error when connecting"),
@@ -125,7 +125,7 @@ fn connect_timeout() {
 
     match r {
       Err(e) => match e {
-        fiona::libc::Errno::ECANCELED => {}
+        libc::ECANCELED => {}
         _ => panic!("incorrect errno value, should be ECANCELED"),
       },
       _ => panic!("expected an error when connecting"),
@@ -172,7 +172,7 @@ fn read_timeout() {
 
     let r = client.async_read(buf).await.unwrap_err();
     match r {
-      fiona::libc::Errno::ECANCELED => {}
+      libc::ECANCELED => {}
       _ => panic!(""),
     };
 
@@ -246,7 +246,7 @@ fn cancel_accept() {
     match result {
       Ok(_) => panic!("Ok is not valid for cancellation"),
       Err(err) => match err {
-        fiona::libc::Errno::ECANCELED => {}
+        libc::ECANCELED => {}
         _ => panic!("incorrect errno value"),
       },
     }
