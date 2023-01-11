@@ -28,9 +28,6 @@ extern "C" {
   fn rio_teardown(ring: *mut io_uring);
   fn rio_make_sqe(ring: *mut io_uring) -> *mut io_uring_sqe;
 
-  fn rio_timerfd_create() -> i32;
-  fn rio_timerfd_settime(fd: i32, secs: u64, nanos: u64) -> i32;
-
   fn rio_make_pipe(pipefd: *mut i32) -> i32;
   fn rio_make_ipv4_tcp_server_socket(
     ipv4_addr: u32,
@@ -116,22 +113,6 @@ pub unsafe fn teardown(ring: *mut io_uring) {
 
 pub unsafe fn make_sqe(ring: *mut io_uring) -> *mut io_uring_sqe {
   rio_make_sqe(ring)
-}
-
-#[must_use]
-pub fn timerfd_create() -> i32 {
-  unsafe { rio_timerfd_create() }
-}
-
-pub unsafe fn timerfd_settime(
-  fd: i32,
-  secs: u64,
-  nanos: u64,
-) -> Result<(), libc::Errno> {
-  match rio_timerfd_settime(fd, secs, nanos) {
-    0 => Ok(()),
-    e => Err(fiona::libc::errno(e)),
-  }
 }
 
 #[must_use]

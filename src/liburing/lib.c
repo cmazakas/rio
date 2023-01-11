@@ -105,36 +105,6 @@ void rio_io_uring_cqe_seen(struct io_uring *ring, struct io_uring_cqe *cqe)
   io_uring_cqe_seen(ring, cqe);
 }
 
-int rio_timerfd_create()
-{
-  int fd = timerfd_create(CLOCK_REALTIME, 0);
-  return fd;
-}
-
-int rio_timerfd_settime(int fd, unsigned long secs, unsigned long nanos)
-{
-  struct timespec now;
-  if (-1 == clock_gettime(CLOCK_REALTIME, &now))
-  {
-    return errno;
-  }
-
-  long ns = now.tv_nsec + (1000 * 1000 * 1000) * secs + nanos;
-
-  struct itimerspec expiry;
-  expiry.it_value.tv_sec = now.tv_sec + (ns / (1000 * 1000 * 1000));
-  expiry.it_value.tv_nsec = ns % (1000 * 1000 * 1000);
-  expiry.it_interval.tv_sec = 0;
-  expiry.it_interval.tv_nsec = 0;
-
-  if (-1 == timerfd_settime(fd, TFD_TIMER_ABSTIME, &expiry, NULL))
-  {
-    return errno;
-  }
-
-  return 0;
-}
-
 int rio_make_pipe(int pipefd[2])
 {
   return pipe(pipefd);
