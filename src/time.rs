@@ -30,7 +30,7 @@ impl<'a> Drop for TimerFuture<'a> {
     if unsafe { (*p).initiated && !(*p).done } {
       let ring = self.ex.get_ring();
       unsafe {
-        let sqe = fiona::liburing::make_sqe(ring);
+        let sqe = fiona::liburing::io_uring_get_sqe(ring);
         fiona::liburing::io_uring_prep_cancel(sqe, p.cast::<libc::c_void>(), 0);
         fiona::liburing::io_uring_submit(ring);
       }
@@ -73,7 +73,7 @@ impl<'a> std::future::Future for TimerFuture<'a> {
     };
 
     let ring = ioc_state.ring;
-    let sqe = unsafe { fiona::liburing::make_sqe(ring) };
+    let sqe = unsafe { fiona::liburing::io_uring_get_sqe(ring) };
 
     let user_data = self.fds.clone().into_raw().cast::<libc::c_void>();
 

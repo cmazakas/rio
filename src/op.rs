@@ -108,7 +108,7 @@ impl CancelHandle {
     }
 
     let ring = self.ex.get_ring();
-    let sqe = unsafe { fiona::liburing::make_sqe(ring) };
+    let sqe = unsafe { fiona::liburing::io_uring_get_sqe(ring) };
     unsafe {
       fiona::liburing::io_uring_prep_cancel(sqe, p.cast::<libc::c_void>(), 0);
     }

@@ -37,11 +37,6 @@ void rio_teardown(struct io_uring *ring)
   free(ring);
 }
 
-struct io_uring_sqe *rio_make_sqe(struct io_uring *ring)
-{
-  return io_uring_get_sqe(ring);
-}
-
 struct io_uring_cqe *rio_io_uring_wait_cqe(struct io_uring *ring, int *res)
 {
   struct io_uring_cqe *cqe = NULL;

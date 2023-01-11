@@ -72,7 +72,7 @@ unsafe fn drop_cancel(
   if (*p).initiated && !(*p).done {
     let ring = (*ioc).ring;
     unsafe {
-      let sqe = fiona::liburing::make_sqe(ring);
+      let sqe = fiona::liburing::io_uring_get_sqe(ring);
       fiona::liburing::io_uring_prep_cancel(sqe, p.cast::<libc::c_void>(), 0);
       fiona::liburing::io_uring_submit(ring);
     }
@@ -118,7 +118,7 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
       unsafe { (*p).task = Some(ioc_state.task_ctx.unwrap()) };
 
       let ring = unsafe { (*self.ex.get_state()).ring };
-      let sqe = unsafe { fiona::liburing::make_sqe(ring) };
+      let sqe = unsafe { fiona::liburing::io_uring_get_sqe(ring) };
       let user_data = self.fds.clone().into_raw().cast::<libc::c_void>();
 
       let (addr, addrlen) = match unsafe { &mut (*p).op } {
@@ -194,7 +194,7 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
 
     let ring = self.ex.get_ring();
 
-    let connect_sqe = unsafe { fiona::liburing::make_sqe(ring) };
+    let connect_sqe = unsafe { fiona::liburing::io_uring_get_sqe(ring) };
 
     let (addr, addrlen) = match connect_fds.op {
       fiona::op::Op::Connect(ref s) => (
@@ -219,7 +219,7 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
     unsafe { fiona::liburing::io_uring_sqe_set_flags(connect_sqe, 1_u32 << 2) };
 
     let mut ts = make_kernel_timespec(self.timeout);
-    let timeout_sqe = unsafe { fiona::liburing::make_sqe(ring) };
+    let timeout_sqe = unsafe { fiona::liburing::io_uring_get_sqe(ring) };
     unsafe {
       fiona::liburing::io_uring_prep_link_timeout(timeout_sqe, &mut ts, 0);
     }
@@ -269,7 +269,7 @@ impl<'a> std::future::Future for ReadFuture<'a> {
 
     let ring = ioc_state.ring;
     let sockfd = read_fds.fd;
-    let read_sqe = unsafe { fiona::liburing::make_sqe(ring) };
+    let read_sqe = unsafe { fiona::liburing::io_uring_get_sqe(ring) };
 
     let (buf, nbytes, offset) = match read_fds.op {
       fiona::op::Op::Read(ref mut s) => match s.buf {
@@ -296,7 +296,7 @@ impl<'a> std::future::Future for ReadFuture<'a> {
     unsafe { fiona::liburing::io_uring_sqe_set_flags(read_sqe, 1_u32 << 2) };
 
     let mut ts = make_kernel_timespec(self.timeout);
-    let timeout_sqe = unsafe { fiona::liburing::make_sqe(ring) };
+    let timeout_sqe = unsafe { fiona::liburing::io_uring_get_sqe(ring) };
     unsafe {
       fiona::liburing::io_uring_prep_link_timeout(timeout_sqe, &mut ts, 0);
     }
@@ -345,7 +345,7 @@ impl<'a> std::future::Future for WriteFuture<'a> {
     fds.task = Some(ioc_state.task_ctx.unwrap());
 
     let ring = ioc_state.ring;
-    let write_sqe = unsafe { fiona::liburing::make_sqe(ring) };
+    let write_sqe = unsafe { fiona::liburing::io_uring_get_sqe(ring) };
 
     let (buf, nbytes, offset) = match fds.op {
       fiona::op::Op::Write(ref mut s) => match s.buf {
@@ -372,7 +372,7 @@ impl<'a> std::future::Future for WriteFuture<'a> {
     unsafe { fiona::liburing::io_uring_sqe_set_flags(write_sqe, 1_u32 << 2) };
 
     let mut ts = make_kernel_timespec(self.timeout);
-    let timeout_sqe = unsafe { fiona::liburing::make_sqe(ring) };
+    let timeout_sqe = unsafe { fiona::liburing::io_uring_get_sqe(ring) };
     unsafe {
       fiona::liburing::io_uring_prep_link_timeout(timeout_sqe, &mut ts, 0);
     }

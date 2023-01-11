@@ -26,7 +26,6 @@ pub struct io_uring_cqe {
 extern "C" {
   fn rio_setup(entries: u32, flags: u32) -> *mut io_uring;
   fn rio_teardown(ring: *mut io_uring);
-  fn rio_make_sqe(ring: *mut io_uring) -> *mut io_uring_sqe;
 
   fn rio_make_pipe(pipefd: *mut i32) -> i32;
   fn rio_make_ipv4_tcp_server_socket(
@@ -37,6 +36,7 @@ extern "C" {
   fn rio_make_ipv4_tcp_socket(fdp: *mut i32) -> i32;
 
   pub fn io_uring_submit(ring: *mut io_uring) -> i32;
+  pub fn io_uring_get_sqe(ring: *mut io_uring) -> *mut io_uring_sqe;
   pub fn io_uring_wait_cqe(
     ring: *mut io_uring,
     cqe_ptr: *mut *mut io_uring_cqe,
@@ -104,15 +104,15 @@ extern "C" {
 
 #[must_use]
 pub fn setup(entries: u32, flags: u32) -> *mut io_uring {
+  /*
+   * we use this function from our own libc to avoid having to spell out the
+   * entire io_uring structure in our Rust code
+   */
   unsafe { rio_setup(entries, flags) }
 }
 
 pub unsafe fn teardown(ring: *mut io_uring) {
   rio_teardown(ring);
-}
-
-pub unsafe fn make_sqe(ring: *mut io_uring) -> *mut io_uring_sqe {
-  rio_make_sqe(ring)
 }
 
 #[must_use]

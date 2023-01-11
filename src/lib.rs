@@ -196,7 +196,7 @@ impl IoContext {
 
     #[allow(clippy::cast_possible_truncation)]
     unsafe {
-      let sqe = liburing::make_sqe(ring);
+      let sqe = liburing::io_uring_get_sqe(ring);
       liburing::io_uring_prep_read(
         sqe,
         pipefd[0],
@@ -235,7 +235,7 @@ impl IoContext {
 
         #[allow(clippy::cast_possible_truncation)]
         unsafe {
-          let sqe = liburing::make_sqe(ring);
+          let sqe = liburing::io_uring_get_sqe(ring);
           liburing::io_uring_prep_read(
             sqe,
             pipefd[0],
@@ -351,7 +351,7 @@ impl Executor {
     unsafe { (*p).task = Some(taskp) };
 
     let ring = state.ring;
-    let sqe = unsafe { liburing::make_sqe(ring) };
+    let sqe = unsafe { liburing::io_uring_get_sqe(ring) };
     let user_data = fds.into_raw().cast::<ext_libc::c_void>();
 
     unsafe { liburing::io_uring_sqe_set_data(sqe, user_data) };
