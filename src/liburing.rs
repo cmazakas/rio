@@ -135,10 +135,10 @@ pub fn make_ipv4_tcp_server_socket(
 }
 
 pub fn make_ipv4_tcp_socket() -> Result<i32, i32> {
-  let mut fd = -1;
-  let err = unsafe { rio_make_ipv4_tcp_socket(&mut fd) };
-  match err {
-    0 => Ok(fd),
-    e => Err(e),
+  let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) };
+  if fd == -1 {
+    return Err(std::io::Error::last_os_error().raw_os_error().unwrap());
   }
+
+  Ok(fd)
 }

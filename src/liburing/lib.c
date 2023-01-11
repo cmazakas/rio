@@ -37,33 +37,9 @@ void rio_teardown(struct io_uring *ring)
   free(ring);
 }
 
-struct io_uring_cqe *rio_io_uring_wait_cqe(struct io_uring *ring, int *res)
-{
-  struct io_uring_cqe *cqe = NULL;
-  int errnum = io_uring_wait_cqe(ring, &cqe);
-  if (0 != errnum)
-  {
-    return NULL;
-  }
-  *res = cqe->res;
-  return cqe;
-}
-
 int rio_make_pipe(int pipefd[2])
 {
   return pipe(pipefd);
-}
-
-int rio_make_ipv4_tcp_socket(int *fdp)
-{
-  int fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (-1 == fd)
-  {
-    return errno;
-  }
-
-  *fdp = fd;
-  return 0;
 }
 
 int rio_make_ipv4_tcp_server_socket(uint32_t ipv4_addr, uint16_t port, int *const fdp)
