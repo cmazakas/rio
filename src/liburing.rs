@@ -33,7 +33,6 @@ extern "C" {
     port: u16,
     fdp: *mut i32,
   ) -> i32;
-  fn rio_make_ipv4_tcp_socket(fdp: *mut i32) -> i32;
 
   pub fn io_uring_submit(ring: *mut io_uring) -> i32;
   pub fn io_uring_get_sqe(ring: *mut io_uring) -> *mut io_uring_sqe;
@@ -58,7 +57,7 @@ extern "C" {
   pub fn io_uring_prep_accept(
     sqe: *mut io_uring_sqe,
     fd: i32,
-    addr: *mut fiona::ip::tcp::sockaddr_in,
+    addr: *mut libc::sockaddr_in,
     addrlen: *mut u32,
     flags: i32,
   );

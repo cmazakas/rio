@@ -38,7 +38,7 @@ pub struct TimeoutState {
 
 #[derive(Clone)]
 pub struct AcceptState {
-  pub addr_in: fiona::ip::tcp::sockaddr_in,
+  pub addr_in: libc::sockaddr_in,
   pub addr_len: u32,
 }
 

@@ -2,21 +2,6 @@ extern crate libc;
 
 use crate as fiona;
 
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
-pub struct sockaddr_in {
-  sin_family: u16,
-  sin_port: u16,
-  sin_addr: in_addr,
-  _sin_zero: [u8; 8],
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
-pub struct in_addr {
-  s_addr: u32,
-}
-
 pub struct Acceptor {
   fd: i32,
   ex: fiona::Executor,
@@ -199,7 +184,7 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
     let (addr, addrlen) = match connect_fds.op {
       fiona::op::Op::Connect(ref s) => (
         std::ptr::addr_of!(s.addr_in),
-        std::mem::size_of::<fiona::ip::tcp::sockaddr_in>() as u32,
+        std::mem::size_of::<libc::sockaddr_in>() as u32,
       ),
       _ => panic!(""),
     };
@@ -404,11 +389,18 @@ impl Acceptor {
 
   pub fn async_accept(&mut self) -> AcceptFuture {
     assert!(self.fd > 0);
+    let addr_in = libc::sockaddr_in {
+      sin_family: 0,
+      sin_addr: libc::in_addr { s_addr: 0 },
+      sin_port: 0,
+      sin_zero: Default::default(),
+    };
+
     let fds = fiona::op::FdState::new(
       self.fd,
       fiona::op::Op::Accept(fiona::op::AcceptState {
-        addr_in: fiona::ip::tcp::sockaddr_in::default(),
-        addr_len: std::mem::size_of::<fiona::ip::tcp::sockaddr_in>() as u32,
+        addr_in,
+        addr_len: std::mem::size_of::<libc::sockaddr_in>() as u32,
       }),
     );
 
