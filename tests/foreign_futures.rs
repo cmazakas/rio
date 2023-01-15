@@ -8,7 +8,22 @@ extern "C" {
 
 struct TimerFuture {
   dur: u64,
+  rx: Option<std::sync::mpsc::Receiver<i32>>,
   join_handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl TimerFuture {
+  fn with_dur(mut dur: u64) -> Self {
+    if dur == 0 {
+      dur += 1;
+    }
+
+    Self {
+      dur,
+      rx: None,
+      join_handle: None,
+    }
+  }
 }
 
 impl Drop for TimerFuture {
@@ -23,7 +38,7 @@ impl Drop for TimerFuture {
 }
 
 impl std::future::Future for TimerFuture {
-  type Output = ();
+  type Output = i32;
 
   fn poll(
     mut self: std::pin::Pin<&mut Self>,
@@ -33,11 +48,17 @@ impl std::future::Future for TimerFuture {
       None => {
         let waker = cx.waker().clone();
         let dur = 1 + self.dur;
+
+        let (tx, rx) = std::sync::mpsc::channel();
+
         self.join_handle = Some(std::thread::spawn(move || {
           println!("dur:{dur}");
           std::thread::sleep(std::time::Duration::from_secs(dur));
+          tx.send(dur as i32).unwrap();
           waker.wake();
         }));
+
+        self.rx = Some(rx);
 
         std::task::Poll::Pending
       }
@@ -45,7 +66,9 @@ impl std::future::Future for TimerFuture {
         if handle.is_finished() {
           let handle = self.join_handle.take().unwrap();
           handle.join().unwrap();
-          std::task::Poll::Ready(())
+
+          let x = self.rx.take().unwrap().recv().unwrap();
+          std::task::Poll::Ready(x)
         } else {
           std::task::Poll::Pending
         }
@@ -63,11 +86,8 @@ fn foreign_timer_future() {
   ioc.post(async move {
     let mut seed = 0_u32;
     let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
-    TimerFuture {
-      join_handle: None,
-      dur,
-    }
-    .await;
+    let n = TimerFuture::with_dur(dur).await;
+    assert!(n > 0);
     unsafe { NUM_RUNS += 1 };
   });
 
@@ -85,28 +105,16 @@ fn foreign_multiple_timer_future() {
   ioc.post(async move {
     let mut seed = 0_u32;
     let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
-    let mut f1 = TimerFuture {
-      join_handle: None,
-      dur,
-    };
+    let mut f1 = TimerFuture::with_dur(dur);
 
     let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
-    let mut f2 = TimerFuture {
-      join_handle: None,
-      dur,
-    };
+    let mut f2 = TimerFuture::with_dur(dur);
 
     let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
-    let mut f3 = TimerFuture {
-      join_handle: None,
-      dur,
-    };
+    let mut f3 = TimerFuture::with_dur(dur);
 
     let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
-    let mut f4 = TimerFuture {
-      join_handle: None,
-      dur,
-    };
+    let mut f4 = TimerFuture::with_dur(dur);
 
     let waker = fiona::WakerFuture {}.await;
     let mut cx = std::task::Context::from_waker(&waker);
@@ -139,28 +147,16 @@ fn foreign_multiple_timer_future() {
   ioc.post(async move {
     let mut seed = 0_u32;
     let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
-    let mut f1 = TimerFuture {
-      join_handle: None,
-      dur,
-    };
+    let mut f1 = TimerFuture::with_dur(dur);
 
     let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
-    let mut f2 = TimerFuture {
-      join_handle: None,
-      dur,
-    };
+    let mut f2 = TimerFuture::with_dur(dur);
 
     let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
-    let mut f3 = TimerFuture {
-      join_handle: None,
-      dur,
-    };
+    let mut f3 = TimerFuture::with_dur(dur);
 
     let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
-    let mut f4 = TimerFuture {
-      join_handle: None,
-      dur,
-    };
+    let mut f4 = TimerFuture::with_dur(dur);
 
     let waker = fiona::WakerFuture {}.await;
     let mut cx = std::task::Context::from_waker(&waker);
@@ -210,11 +206,7 @@ fn mixed_futures() {
     let mut seed = 0_u32;
     let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
 
-    TimerFuture {
-      join_handle: None,
-      dur,
-    }
-    .await;
+    TimerFuture::with_dur(dur).await;
 
     timer.async_wait().await.unwrap();
     unsafe { NUM_RUNS += 1 };
@@ -262,10 +254,7 @@ fn drop() {
   ioc.post(async move {
     let mut seed = 0_u32;
     let dur = u64::try_from(unsafe { rand_r(&mut seed) } % 4).unwrap();
-    let mut f1 = TimerFuture {
-      join_handle: None,
-      dur,
-    };
+    let mut f1 = TimerFuture::with_dur(dur);
 
     let waker = fiona::WakerFuture {}.await;
     let mut cx = std::task::Context::from_waker(&waker);
