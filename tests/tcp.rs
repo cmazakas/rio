@@ -75,6 +75,69 @@ fn tcp_acceptor() {
 }
 
 #[test]
+fn multi_accept() {
+  static mut NUM_RUNS: i32 = 0;
+  const MAX_CONNS: i32 = 100;
+
+  let port = get_port();
+
+  async fn server(mut ex: fiona::Executor, port: u16) {
+    let mut acceptor = fiona::ip::tcp::Acceptor::new(&ex);
+    acceptor.listen(LOCALHOST, port).unwrap();
+
+    let mut num_conns = 0_i32;
+    while num_conns < MAX_CONNS {
+      let mut stream = acceptor.async_accept().await.unwrap();
+
+      ex.post(async move {
+        let mut buf = vec![0_u8; 4096];
+        unsafe {
+          buf.set_len(0);
+        }
+
+        let buf = stream.async_read(buf).await.unwrap();
+
+        assert_eq!(buf.len(), 13);
+        let str = unsafe { std::str::from_utf8_unchecked(&buf[0..buf.len()]) };
+        assert_eq!(str, "Hello, world!");
+      });
+
+      num_conns += 1;
+    }
+
+    unsafe { NUM_RUNS += 1 };
+  }
+
+  async fn client(mut ex: fiona::Executor, port: u16) {
+    for _i in 0..MAX_CONNS {
+      ex.post({
+        let ex = ex.clone();
+        async move {
+          let mut client = fiona::ip::tcp::Socket::new(&ex);
+
+          client.async_connect(LOCALHOST, port).await.unwrap();
+
+          let str = String::from("Hello, world!").into_bytes();
+
+          client.async_write(str).await.unwrap();
+        }
+      });
+    }
+
+    unsafe { NUM_RUNS += 1 };
+  }
+
+  let mut ioc = fiona::IoContext::new();
+  let ex = ioc.get_executor();
+
+  ioc.post(server(ex.clone(), port));
+  ioc.post(client(ex, port));
+  ioc.run();
+
+  assert_eq!(unsafe { NUM_RUNS }, 2);
+}
+
+#[test]
 fn econnrefused_connect_future() {
   static mut NUM_RUNS: i32 = 0;
 
@@ -130,8 +193,6 @@ fn connect_timeout() {
       },
       _ => panic!("expected an error when connecting"),
     }
-
-    // println!("do I really get here????");
 
     unsafe { NUM_RUNS += 1 };
   });
