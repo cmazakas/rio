@@ -338,14 +338,6 @@ impl Executor {
     let state = unsafe { &mut *self.get_state() };
     let taskp = unsafe { task.as_mut().get_unchecked_mut() as *mut _ };
 
-    // let statep = std::rc::Rc::new(std::cell::UnsafeCell::new(FdFutureSharedState {
-    //   done: false,
-    //   fd: -1,
-    //   res: -1,
-    //   task: Some(taskp),
-    //   disarmed: false,
-    // }));
-
     let fds = op::FdState::new(-1, op::Op::Null);
     let p = fds.get();
     unsafe { (*p).task = Some(taskp) };

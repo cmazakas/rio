@@ -59,17 +59,17 @@ pub struct WriteState {
 impl FdState {
   #[must_use]
   pub fn new(fd: i32, op: Op) -> Self {
-    Self {
-      p: std::rc::Rc::new(std::cell::UnsafeCell::new(FdStateImpl {
-        initiated: false,
-        done: false,
-        disarmed: false,
-        fd,
-        res: -1,
-        task: None,
-        op,
-      })),
-    }
+    let p = std::rc::Rc::new(std::cell::UnsafeCell::new(FdStateImpl {
+      initiated: false,
+      done: false,
+      disarmed: false,
+      fd,
+      res: -1,
+      task: None,
+      op,
+    }));
+
+    Self { p }
   }
 
   #[must_use]
