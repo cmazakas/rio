@@ -207,6 +207,7 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
     let timeout_sqe = unsafe { fiona::liburing::io_uring_get_sqe(ring) };
     unsafe {
       fiona::liburing::io_uring_prep_link_timeout(timeout_sqe, &mut ts, 0);
+      fiona::liburing::io_uring_sqe_set_data(timeout_sqe, std::ptr::null_mut());
     }
 
     unsafe {
@@ -284,6 +285,7 @@ impl<'a> std::future::Future for ReadFuture<'a> {
     let timeout_sqe = unsafe { fiona::liburing::io_uring_get_sqe(ring) };
     unsafe {
       fiona::liburing::io_uring_prep_link_timeout(timeout_sqe, &mut ts, 0);
+      fiona::liburing::io_uring_sqe_set_data(timeout_sqe, std::ptr::null_mut());
     }
 
     unsafe { fiona::liburing::io_uring_submit(ring) };
@@ -360,6 +362,7 @@ impl<'a> std::future::Future for WriteFuture<'a> {
     let timeout_sqe = unsafe { fiona::liburing::io_uring_get_sqe(ring) };
     unsafe {
       fiona::liburing::io_uring_prep_link_timeout(timeout_sqe, &mut ts, 0);
+      fiona::liburing::io_uring_sqe_set_data(timeout_sqe, std::ptr::null_mut());
     }
 
     unsafe { fiona::liburing::io_uring_submit(ring) };
