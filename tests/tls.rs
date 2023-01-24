@@ -19,6 +19,16 @@ fn get_port() -> u16 {
   unsafe { PORT.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
 }
 
+fn read_file(path: &str) -> Vec<u8> {
+  let mut f = std::fs::File::open(path).unwrap();
+  let len = f.metadata().unwrap().len();
+
+  let mut buf = vec![0_u8; len as usize];
+  f.read_exact(&mut buf).unwrap();
+
+  buf
+}
+
 fn make_root_cert_store() -> rustls::RootCertStore {
   let mut root_store = rustls::RootCertStore::empty();
   root_store.add_server_trust_anchors(
@@ -31,12 +41,7 @@ fn make_root_cert_store() -> rustls::RootCertStore {
     }),
   );
 
-  let mut certs = vec![0_u8; 4096];
-  std::fs::File::open("tests/ca.crt")
-    .unwrap()
-    .read(&mut certs)
-    .unwrap();
-
+  let certs = read_file("tests/ca.crt");
   let mut certs = rustls_pemfile::certs(&mut &certs[..]).unwrap();
   assert_eq!(certs.len(), 1);
 
@@ -58,24 +63,15 @@ fn make_tls_client_cfg() -> rustls::ClientConfig {
 }
 
 fn make_tls_server_cfg() -> rustls::ServerConfig {
-  let mut f = std::fs::File::open("tests/server.crt").unwrap();
-  let len = f.metadata().unwrap().len();
-
-  let mut buf = vec![0_u8; len as usize];
-  f.read(&mut buf).unwrap();
+  let buf = read_file("tests/server.crt");
 
   let certs = rustls_pemfile::certs(&mut &buf[..]).unwrap();
   assert_eq!(certs.len(), 1);
 
   let cert_chain: Vec<rustls::Certificate> =
-    certs.into_iter().map(|b| rustls::Certificate(b)).collect();
+    certs.into_iter().map(rustls::Certificate).collect();
 
-  let mut f = std::fs::File::open("tests/server.key").unwrap();
-  let len = f.metadata().unwrap().len();
-
-  let mut buf = vec![0_u8; len as usize];
-  f.read(&mut buf).unwrap();
-
+  let buf = read_file("tests/server.key");
   let mut keys = rustls_pemfile::pkcs8_private_keys(&mut &buf[..]).unwrap();
   assert_eq!(keys.len(), 1);
 
@@ -100,10 +96,10 @@ fn tls_test() {
   )
   .unwrap();
 
-  client
-    .writer()
-    .write(b"I bestow the heads of virgins and the first-born sons!")
-    .unwrap();
+  // client
+  //   .writer()
+  //   .write_all(b"I bestow the heads of virgins and the first-born sons!")
+  //   .unwrap();
 
   assert!(client.wants_write());
   assert!(!client.wants_read());
@@ -124,9 +120,15 @@ fn tls_test() {
   let mut server_buf = Vec::<u8>::new();
   server.read_tls(&mut &net_buf[..]).unwrap();
   server.process_new_packets().unwrap();
-  /* let n =  */
-  server.reader().read(&mut server_buf[..]).unwrap();
-  // println!("{:?}", &server_buf[0..n]);
+  match server
+    .reader()
+    .read_to_end(&mut server_buf)
+    .unwrap_err()
+    .kind()
+  {
+    std::io::ErrorKind::WouldBlock => {}
+    _ => panic!(""),
+  }
 
   assert!(!server.wants_read());
   assert!(server.wants_write());
@@ -148,19 +150,53 @@ fn tls_test() {
     net_buf.drain(0..n);
   }
 
-  net_buf.clear();
-  client.write_tls(&mut net_buf).unwrap();
-  // println!("{:?}", &net_buf[0..n]);
-  assert!(!client.wants_write());
+  for _i in 0..5 {
+    client
+      .writer()
+      .write_all(b"I bestow the heads of virgins and the first-born sons!")
+      .unwrap();
 
-  server.read_tls(&mut &net_buf[..]).unwrap();
-  server.process_new_packets().unwrap();
-  let n = server.reader().read(&mut server_buf[..]).unwrap();
+    net_buf.clear();
+    client.write_tls(&mut net_buf).unwrap();
+    // println!("{:?}", &net_buf[0..n]);
+    assert!(!client.wants_write());
 
-  assert_eq!(
-    "I bestow the heads of virgins and the first-born sons!",
-    std::str::from_utf8(&server_buf[0..n]).unwrap()
-  );
+    server_buf = net_buf.clone();
+    net_buf.clear();
+
+    server.read_tls(&mut &server_buf[..]).unwrap();
+    server.process_new_packets().unwrap();
+
+    server_buf.clear();
+    server.reader().read_to_end(&mut server_buf).unwrap_err();
+
+    assert_eq!(
+      "I bestow the heads of virgins and the first-born sons!",
+      std::str::from_utf8(&server_buf).unwrap()
+    );
+
+    server
+      .writer()
+      .write_all(b"... within these monuments of stone...")
+      .unwrap();
+
+    server_buf.clear();
+    server.write_tls(&mut server_buf).unwrap();
+
+    net_buf = server_buf.clone();
+    server_buf.clear();
+    // println!("{:?}", &net_buf[..]);
+
+    client.read_tls(&mut &net_buf[..]).unwrap();
+    client.process_new_packets().unwrap();
+
+    net_buf.clear();
+    client.reader().read_to_end(&mut net_buf).unwrap_err();
+    assert_eq!(
+      "... within these monuments of stone...",
+      std::str::from_utf8(&net_buf).unwrap()
+    );
+  }
 }
 
 // #[test]
