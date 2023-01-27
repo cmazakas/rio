@@ -130,8 +130,11 @@ fn tls_test() {
     _ => panic!(""),
   }
 
+  assert!(client.is_handshaking());
+
   assert!(!server.wants_read());
   assert!(server.wants_write());
+  assert!(server.is_handshaking());
 
   server_buf.clear();
   server.write_tls(&mut server_buf).unwrap();
@@ -140,15 +143,22 @@ fn tls_test() {
   assert!(client.wants_read());
 
   net_buf = server_buf.clone();
-  while client.wants_read() {
-    let n = client.read_tls(&mut &net_buf[..]).unwrap();
-    // println!("{n}");
-    if n == 0 {
-      break;
-    }
-    client.process_new_packets().unwrap();
-    net_buf.drain(0..n);
-  }
+  client.read_tls(&mut &net_buf[..]).unwrap();
+  client.process_new_packets().unwrap();
+
+  assert!(client.wants_write());
+  assert!(client.wants_read());
+  assert!(!client.is_handshaking());
+
+  net_buf.clear();
+  client.write_tls(&mut net_buf).unwrap();
+  server_buf = net_buf.clone();
+  net_buf.clear();
+
+  server.read_tls(&mut &server_buf[..]).unwrap();
+  server.process_new_packets().unwrap();
+
+  assert!(!server.is_handshaking());
 
   for _i in 0..5 {
     client
@@ -197,6 +207,38 @@ fn tls_test() {
       std::str::from_utf8(&net_buf).unwrap()
     );
   }
+
+  client.send_close_notify();
+  net_buf.clear();
+  client.write_tls(&mut net_buf).unwrap();
+
+  server_buf = net_buf.clone();
+  net_buf.clear();
+
+  server.read_tls(&mut &server_buf[..]).unwrap();
+  server.process_new_packets().unwrap();
+
+  server_buf.clear();
+  server.reader().read_to_end(&mut server_buf).unwrap();
+
+  server.send_close_notify();
+  assert!(server.wants_write());
+  server_buf.clear();
+  server.write_tls(&mut server_buf).unwrap();
+
+  net_buf = server_buf.clone();
+  server_buf.clear();
+
+  client.read_tls(&mut &net_buf[..]).unwrap();
+  client.process_new_packets().unwrap();
+  net_buf.clear();
+  client.reader().read_to_end(&mut net_buf).unwrap();
+
+  assert!(!client.wants_read());
+  assert!(!client.wants_write());
+
+  assert!(!server.wants_read());
+  assert!(!server.wants_write());
 }
 
 // #[test]
