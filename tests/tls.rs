@@ -198,7 +198,9 @@ fn tls_test() {
     // println!("{:?}", &net_buf[..]);
 
     client.read_tls(&mut &net_buf[..]).unwrap();
-    client.process_new_packets().unwrap();
+    let state = client.process_new_packets().unwrap();
+    assert!(!state.peer_has_closed());
+    assert!(state.plaintext_bytes_to_read() > 0);
 
     net_buf.clear();
     client.reader().read_to_end(&mut net_buf).unwrap_err();
@@ -216,7 +218,8 @@ fn tls_test() {
   net_buf.clear();
 
   server.read_tls(&mut &server_buf[..]).unwrap();
-  server.process_new_packets().unwrap();
+  let state = server.process_new_packets().unwrap();
+  assert!(state.peer_has_closed());
 
   server_buf.clear();
   server.reader().read_to_end(&mut server_buf).unwrap();
@@ -241,59 +244,135 @@ fn tls_test() {
   assert!(!server.wants_write());
 }
 
-// #[test]
-// fn tls_server_test() {
-//   use std::io::Write;
+#[test]
+fn tls_server_test() {
+  use std::io::Write;
 
-//   static mut NUM_RUNS: i32 = 0;
+  static mut NUM_RUNS: i32 = 0;
 
-//   let server_port = get_port();
+  let server_port = get_port();
 
-//   fn server(
-//     ex: &fio::Executor,
-//     port: u16,
-//   ) -> impl std::future::Future<Output = ()> {
-//     let ex = ex.clone();
-//     async move {
-//       let mut acceptor = fio::ip::tcp::Acceptor::new(&ex);
-//       acceptor.listen(LOCALHOST, port).unwrap();
-//       let peer = acceptor.async_accept();
+  fn server(
+    ex: &fio::Executor,
+    port: u16,
+  ) -> impl std::future::Future<Output = ()> {
+    let ex = ex.clone();
+    let server_cfg = std::sync::Arc::new(make_tls_server_cfg());
 
-//       unsafe { NUM_RUNS += 1 };
-//     }
-//   }
+    async move {
+      let mut acceptor = fio::ip::tcp::Acceptor::new(&ex);
+      acceptor.listen(LOCALHOST, port).unwrap();
 
-//   let client_cfg = std::sync::Arc::new(make_tls_client_cfg());
+      let mut peer = acceptor.async_accept().await.unwrap();
 
-//   fn client(
-//     ex: &fio::Executor,
-//     port: u16,
-//     client_cfg: &std::sync::Arc<rustls::ClientConfig>,
-//   ) -> impl std::future::Future<Output = ()> {
-//     let ex = ex.clone();
-//     let client_cfg = client_cfg.clone();
+      let mut tls_stream = rustls::ServerConnection::new(server_cfg).unwrap();
 
-//     async move {
-//       let mut client = rustls::ClientConnection::new(
-//         client_cfg,
-//         rustls::ServerName::try_from("localhost").unwrap(),
-//       )
-//       .unwrap();
+      let mut buf = vec![0_u8; 1024 * 1024];
+      unsafe {
+        buf.set_len(0);
+      }
+      let mut buf = peer.async_read(buf).await.unwrap();
 
-//       client
-//         .writer()
-//         .write(b"I bestow the heads of virgins and first-born sons")
-//         .unwrap();
+      assert!(!buf.is_empty());
 
-//       unsafe { NUM_RUNS += 1 };
-//     }
-//   }
+      assert!(tls_stream.wants_read());
+      assert!(!tls_stream.wants_write());
 
-//   let mut ioc = fio::IoContext::new();
-//   let ex = ioc.get_executor();
-//   ioc.post(server(&ex, server_port));
-//   ioc.post(client(&ex, server_port, &client_cfg));
-//   ioc.run();
+      tls_stream.read_tls(&mut &buf[..]).unwrap();
+      let info = tls_stream.process_new_packets().unwrap();
 
-//   assert_eq!(unsafe { NUM_RUNS }, 2);
-// }
+      assert!(tls_stream.is_handshaking());
+      assert_eq!(info.plaintext_bytes_to_read(), 0);
+
+      buf.clear();
+      tls_stream.write_tls(&mut buf).unwrap();
+
+      let mut buf = peer.async_write(buf).await.unwrap();
+
+      buf.clear();
+      let mut buf = peer.async_read(buf).await.unwrap();
+
+      tls_stream.read_tls(&mut &buf[..]).unwrap();
+      tls_stream.process_new_packets().unwrap();
+
+      assert!(!tls_stream.is_handshaking());
+
+      buf.clear();
+      let mut buf = peer.async_read(buf).await.unwrap();
+
+      tls_stream.read_tls(&mut &buf[..]).unwrap();
+      let info = tls_stream.process_new_packets().unwrap();
+
+      assert!(info.plaintext_bytes_to_read() > 0);
+
+      buf.clear();
+      tls_stream.reader().read_to_end(&mut buf).unwrap_err();
+      assert_eq!("I bestow...", std::str::from_utf8(&buf).unwrap());
+
+      unsafe { NUM_RUNS += 1 };
+    }
+  }
+
+  fn client(
+    ex: &fio::Executor,
+    port: u16,
+  ) -> impl std::future::Future<Output = ()> {
+    let ex = ex.clone();
+    let client_cfg = std::sync::Arc::new(make_tls_client_cfg());
+
+    async move {
+      let mut client = fio::ip::tcp::Socket::new(&ex);
+      client.async_connect(LOCALHOST, port).await.unwrap();
+
+      let mut buf = vec![0_u8; 1024 * 1024];
+      unsafe {
+        buf.set_len(0);
+      }
+
+      let mut tls_stream = rustls::ClientConnection::new(
+        client_cfg,
+        rustls::ServerName::try_from("localhost").unwrap(),
+      )
+      .unwrap();
+
+      tls_stream.write_tls(&mut buf).unwrap();
+      let mut buf = client.async_write(buf).await.unwrap();
+
+      assert!(tls_stream.is_handshaking());
+
+      buf.clear();
+      let mut buf = client.async_read(buf).await.unwrap();
+
+      tls_stream.read_tls(&mut &buf[..]).unwrap();
+      let info = tls_stream.process_new_packets().unwrap();
+
+      assert!(!tls_stream.is_handshaking());
+      assert_eq!(info.plaintext_bytes_to_read(), 0);
+
+      buf.clear();
+      tls_stream.write_tls(&mut buf).unwrap();
+
+      let mut buf = client.async_write(buf).await.unwrap();
+
+      assert!(!tls_stream.is_handshaking());
+
+      tls_stream.writer().write_all(b"I bestow...").unwrap();
+
+      buf.clear();
+      tls_stream.write_tls(&mut buf).unwrap();
+
+      let mut buf = client.async_write(buf).await.unwrap();
+      buf.clear();
+
+      unsafe { NUM_RUNS += 1 };
+    }
+  }
+
+  let mut ioc = fio::IoContext::new();
+  let ex = ioc.get_executor();
+  ioc.post(server(&ex, server_port));
+  ioc.post(client(&ex, server_port));
+  ioc.run();
+
+  assert_eq!(unsafe { NUM_RUNS }, 2);
+}
