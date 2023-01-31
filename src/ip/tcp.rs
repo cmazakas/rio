@@ -352,7 +352,7 @@ impl<'a> std::future::Future for WriteFuture<'a> {
         sockfd,
         buf.cast::<libc::c_void>(),
         nbytes as u32,
-        offset as u64,
+        offset,
       );
     }
 
