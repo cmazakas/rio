@@ -6,7 +6,7 @@ extern crate rustls;
 extern crate rustls_pemfile;
 extern crate webpki_roots;
 
-use std::io::Read;
+use std::{io::Read, sync::Arc};
 
 use fiona as fio;
 
@@ -309,6 +309,23 @@ fn tls_server_test() {
       tls_stream.reader().read_to_end(&mut buf).unwrap_err();
       assert_eq!("I bestow...", std::str::from_utf8(&buf).unwrap());
 
+      buf.clear();
+      let mut buf = peer.async_read(buf).await.unwrap();
+      tls_stream.read_tls(&mut &buf[..]).unwrap();
+      let info = tls_stream.process_new_packets().unwrap();
+
+      info.tls_bytes_to_write();
+      assert!(info.peer_has_closed());
+      assert!(info.tls_bytes_to_write() > 0);
+
+      buf.clear();
+      tls_stream.send_close_notify();
+      tls_stream.write_tls(&mut buf).unwrap();
+      peer.async_write(buf).await.unwrap();
+
+      assert!(!tls_stream.wants_write());
+      assert!(!tls_stream.wants_read());
+
       unsafe { NUM_RUNS += 1 };
     }
   }
@@ -363,6 +380,23 @@ fn tls_server_test() {
 
       let mut buf = client.async_write(buf).await.unwrap();
       buf.clear();
+
+      tls_stream.send_close_notify();
+      tls_stream.write_tls(&mut buf).unwrap();
+
+      let mut buf = client.async_write(buf).await.unwrap();
+
+      buf.clear();
+      let buf = client.async_read(buf).await.unwrap();
+
+      tls_stream.read_tls(&mut &buf[..]).unwrap();
+      let info = tls_stream.process_new_packets().unwrap();
+
+      assert!(info.peer_has_closed());
+      assert_eq!(info.tls_bytes_to_write(), 0);
+
+      assert!(!tls_stream.wants_read());
+      assert!(!tls_stream.wants_write());
 
       unsafe { NUM_RUNS += 1 };
     }
