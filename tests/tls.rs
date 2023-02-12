@@ -13,7 +13,7 @@ use fiona as fio;
 const LOCALHOST: u32 = 0x7f000001;
 
 static mut PORT: std::sync::atomic::AtomicU16 =
-  std::sync::atomic::AtomicU16::new(3300);
+  std::sync::atomic::AtomicU16::new(4300);
 
 fn get_port() -> u16 {
   unsafe { PORT.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
@@ -264,6 +264,7 @@ fn tls_server_test() {
       acceptor.listen(LOCALHOST, port).unwrap();
 
       let mut peer = acceptor.async_accept().await.unwrap();
+      peer.timeout = std::time::Duration::from_secs(1);
 
       let mut tls_stream = rustls::ServerConnection::new(server_cfg).unwrap();
 
@@ -273,40 +274,59 @@ fn tls_server_test() {
       }
       let mut buf = peer.async_read(buf).await.unwrap();
 
+      // beginning of the TLS handshake
       assert!(!buf.is_empty());
 
       assert!(tls_stream.wants_read());
       assert!(!tls_stream.wants_write());
 
+      // read Client Hello
       tls_stream.read_tls(&mut &buf[..]).unwrap();
       let info = tls_stream.process_new_packets().unwrap();
 
       assert!(tls_stream.is_handshaking());
       assert_eq!(info.plaintext_bytes_to_read(), 0);
 
+      // write Server Hello
       buf.clear();
       tls_stream.write_tls(&mut buf).unwrap();
+      assert!(tls_stream.is_handshaking());
 
       let mut buf = peer.async_write(buf).await.unwrap();
 
-      buf.clear();
-      let mut buf = peer.async_read(buf).await.unwrap();
-
-      tls_stream.read_tls(&mut &buf[..]).unwrap();
-      tls_stream.process_new_packets().unwrap();
-
-      assert!(!tls_stream.is_handshaking());
-
+      // at this stage, TLS should be complete once we read in the remaining
+      // portion of the handshake
+      // application data should _not_ be mixed in here
       buf.clear();
       let mut buf = peer.async_read(buf).await.unwrap();
 
       tls_stream.read_tls(&mut &buf[..]).unwrap();
       let info = tls_stream.process_new_packets().unwrap();
 
-      assert!(info.plaintext_bytes_to_read() > 0);
+      assert!(!tls_stream.is_handshaking());
+      assert_eq!(info.plaintext_bytes_to_read(), 0);
+
+      // now we're ready for application data
+      buf.clear();
+      let mut buf = peer.async_read(buf).await.unwrap();
+
+      tls_stream.read_tls(&mut &buf[..]).unwrap();
+      let info = tls_stream.process_new_packets().unwrap();
+
+      let n = info.plaintext_bytes_to_read();
+      assert!(n > 0);
+      assert_eq!(n, 11);
 
       buf.clear();
-      tls_stream.reader().read_to_end(&mut buf).unwrap_err();
+      match tls_stream
+        .reader()
+        .read_to_end(&mut buf)
+        .unwrap_err()
+        .kind()
+      {
+        std::io::ErrorKind::WouldBlock => {}
+        _ => panic!(),
+      }
       assert_eq!("I bestow...", std::str::from_utf8(&buf).unwrap());
 
       buf.clear();
@@ -339,6 +359,7 @@ fn tls_server_test() {
 
     async move {
       let mut client = fio::ip::tcp::Socket::new(&ex);
+      client.timeout = std::time::Duration::from_secs(1);
       client.async_connect(LOCALHOST, port).await.unwrap();
 
       let mut buf = vec![0_u8; 1024 * 1024];
