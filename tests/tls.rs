@@ -440,33 +440,22 @@ async fn async_server_handshake_impl(
 ) -> Vec<u8> {
   assert!(tls_stream.is_handshaking());
 
-  println!("A");
+  while tls_stream.is_handshaking() {
+    if tls_stream.wants_read() {
+      buf.clear();
+      buf = s.async_read(buf).await.unwrap();
+      assert!(!buf.is_empty());
 
-  while tls_stream.wants_read() {
-    buf.clear();
-    buf = s.async_read(buf).await.unwrap();
-    tls_stream.read_tls(&mut &buf[..]).unwrap();
-    tls_stream.process_new_packets().unwrap();
+      tls_stream.read_tls(&mut &buf[..]).unwrap();
+      tls_stream.process_new_packets().unwrap();
+    }
+
+    if tls_stream.wants_write() {
+      buf.clear();
+      tls_stream.write_tls(&mut buf).unwrap();
+      buf = s.async_write(buf).await.unwrap();
+    }
   }
-
-  println!("B");
-
-  while tls_stream.wants_write() {
-    buf.clear();
-    tls_stream.write_tls(&mut buf).unwrap();
-    buf = s.async_write(buf).await.unwrap();
-  }
-
-  println!("C");
-
-  while tls_stream.wants_read() && tls_stream.is_handshaking() {
-    buf.clear();
-    buf = s.async_read(buf).await.unwrap();
-    tls_stream.read_tls(&mut &buf[..]).unwrap();
-    tls_stream.process_new_packets().unwrap();
-  }
-
-  println!("D");
 
   assert!(!tls_stream.is_handshaking());
 
@@ -480,32 +469,28 @@ async fn async_client_handshake_impl(
 ) -> Vec<u8> {
   assert!(tls_stream.is_handshaking());
 
-  println!("1");
+  while tls_stream.is_handshaking() {
+    if tls_stream.wants_write() {
+      buf.clear();
+      tls_stream.write_tls(&mut buf).unwrap();
+      buf = s.async_write(buf).await.unwrap();
+      assert!(!buf.is_empty());
+    }
+
+    if tls_stream.wants_read() {
+      buf.clear();
+      buf = s.async_read(buf).await.unwrap();
+      tls_stream.read_tls(&mut &buf[..]).unwrap();
+      tls_stream.process_new_packets().unwrap();
+    }
+  }
 
   while tls_stream.wants_write() {
     buf.clear();
     tls_stream.write_tls(&mut buf).unwrap();
     buf = s.async_write(buf).await.unwrap();
+    assert!(!buf.is_empty());
   }
-
-  println!("2");
-
-  while tls_stream.wants_read() && tls_stream.is_handshaking() {
-    buf.clear();
-    buf = s.async_read(buf).await.unwrap();
-    tls_stream.read_tls(&mut &buf[..]).unwrap();
-    tls_stream.process_new_packets().unwrap();
-  }
-
-  println!("3");
-
-  while tls_stream.wants_write() {
-    buf.clear();
-    tls_stream.write_tls(&mut buf).unwrap();
-    buf = s.async_write(buf).await.unwrap();
-  }
-
-  println!("4");
 
   assert!(!tls_stream.is_handshaking());
 
@@ -537,7 +522,7 @@ fn test_async_handshake() {
       let mut tls_stream = rustls::ServerConnection::new(server_cfg).unwrap();
       assert!(tls_stream.is_handshaking());
 
-      let mut buf = vec![0_u8; 1024 * 1024];
+      let mut buf = vec![0_u8; 16];
       unsafe {
         buf.set_len(0);
       }
@@ -561,7 +546,7 @@ fn test_async_handshake() {
       client.timeout = std::time::Duration::from_secs(1);
       client.async_connect(LOCALHOST, port).await.unwrap();
 
-      let mut buf = vec![0_u8; 1024 * 1024];
+      let mut buf = vec![0_u8; 16];
       unsafe {
         buf.set_len(0);
       }
