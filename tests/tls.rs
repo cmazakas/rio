@@ -359,7 +359,7 @@ fn tls_server_test() {
     let client_cfg = std::sync::Arc::new(make_tls_client_cfg());
 
     async move {
-      let mut client = fio::ip::tcp::Socket::new(&ex);
+      let mut client = fio::ip::tcp::Client::new(&ex);
       client.timeout = std::time::Duration::from_secs(1);
       client.async_connect(LOCALHOST, port).await.unwrap();
 
@@ -527,7 +527,7 @@ fn test_async_handshake() {
         buf.set_len(0);
       }
 
-      let mut buf =
+      let _buf =
         async_server_handshake_impl(&mut peer, &mut tls_stream, buf).await;
 
       unsafe { NUM_RUNS += 1 };
@@ -542,7 +542,7 @@ fn test_async_handshake() {
     let client_cfg = std::sync::Arc::new(make_tls_client_cfg());
 
     async move {
-      let mut client = fio::ip::tcp::Socket::new(&ex);
+      let mut client = fio::ip::tcp::Client::new(&ex);
       client.timeout = std::time::Duration::from_secs(1);
       client.async_connect(LOCALHOST, port).await.unwrap();
 

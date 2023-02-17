@@ -13,6 +13,10 @@ pub struct Socket {
   pub timeout: std::time::Duration,
 }
 
+pub struct Client {
+  s: Socket,
+}
+
 pub struct AcceptFuture<'a> {
   ex: fiona::Executor,
   fds: fiona::op::FdState,
@@ -432,6 +436,14 @@ impl Drop for Socket {
 }
 
 impl Socket {
+  fn fd(&self) -> i32 {
+    self.fd
+  }
+
+  fn ex(&self) -> fiona::Executor {
+    self.ex.clone()
+  }
+
   #[must_use]
   pub fn new(ex: &fiona::Executor) -> Self {
     Self {
@@ -447,32 +459,6 @@ impl Socket {
       fd,
       ex,
       timeout: std::time::Duration::from_secs(30),
-    }
-  }
-
-  pub fn async_connect(&mut self, ipv4_addr: u32, port: u16) -> ConnectFuture {
-    let addr_in = libc::sockaddr_in {
-      sin_family: libc::AF_INET as u16,
-      sin_port: port.to_be(),
-      sin_addr: libc::in_addr {
-        s_addr: ipv4_addr.to_be(),
-      },
-      sin_zero: Default::default(),
-    };
-
-    let connect_fds = fiona::op::FdState::new(
-      self.fd,
-      fiona::op::Op::Connect(fiona::op::ConnectState {
-        addr_in,
-        timer_fds: None,
-      }),
-    );
-
-    ConnectFuture {
-      ex: self.ex.clone(),
-      connect_fds,
-      timeout: self.timeout,
-      _m: std::marker::PhantomData,
     }
   }
 
@@ -505,6 +491,52 @@ impl Socket {
       timeout: self.timeout,
       _m: std::marker::PhantomData,
     }
+  }
+}
+
+impl Client {
+  #[must_use]
+  pub fn new(ex: &fiona::Executor) -> Self {
+    Self { s: Socket::new(ex) }
+  }
+
+  pub fn async_connect(&mut self, ipv4_addr: u32, port: u16) -> ConnectFuture {
+    let addr_in = libc::sockaddr_in {
+      sin_family: libc::AF_INET as u16,
+      sin_port: port.to_be(),
+      sin_addr: libc::in_addr {
+        s_addr: ipv4_addr.to_be(),
+      },
+      sin_zero: Default::default(),
+    };
+
+    let connect_fds = fiona::op::FdState::new(
+      self.fd(),
+      fiona::op::Op::Connect(fiona::op::ConnectState {
+        addr_in,
+        timer_fds: None,
+      }),
+    );
+
+    ConnectFuture {
+      ex: self.ex(),
+      connect_fds,
+      timeout: self.timeout,
+      _m: std::marker::PhantomData,
+    }
+  }
+}
+
+impl std::ops::Deref for Client {
+  type Target = Socket;
+  fn deref(&self) -> &Self::Target {
+    &self.s
+  }
+}
+
+impl std::ops::DerefMut for Client {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.s
   }
 }
 

@@ -55,7 +55,7 @@ fn tcp_acceptor() {
   }
 
   async fn client(ex: fiona::Executor, port: u16) {
-    let mut client = fiona::ip::tcp::Socket::new(&ex);
+    let mut client = fiona::ip::tcp::Client::new(&ex);
     client.async_connect(LOCALHOST, port).await.unwrap();
 
     let str = String::from("Hello, world!").into_bytes();
@@ -113,7 +113,7 @@ fn multi_accept() {
       ex.post({
         let ex = ex.clone();
         async move {
-          let mut client = fiona::ip::tcp::Socket::new(&ex);
+          let mut client = fiona::ip::tcp::Client::new(&ex);
 
           client.async_connect(LOCALHOST, port).await.unwrap();
 
@@ -152,7 +152,7 @@ fn econnrefused_connect_future() {
     unsafe { NUM_RUNS += 1 };
   });
 
-  let mut client = fiona::ip::tcp::Socket::new(&ex);
+  let mut client = fiona::ip::tcp::Client::new(&ex);
   ioc.post(async move {
     let r = client.async_connect(LOCALHOST, get_port()).await;
 
@@ -178,7 +178,7 @@ fn connect_timeout() {
   let mut ioc = fiona::IoContext::new();
   let ex = ioc.get_executor();
 
-  let mut client = fiona::ip::tcp::Socket::new(&ex);
+  let mut client = fiona::ip::tcp::Client::new(&ex);
   client.timeout = std::time::Duration::from_secs(2);
   ioc.post(async move {
     // use one of the IP addresses from the test networks:
@@ -213,7 +213,7 @@ fn read_timeout() {
   let mut acceptor = fiona::ip::tcp::Acceptor::new(&ex);
   acceptor.listen(LOCALHOST, port).unwrap();
 
-  let mut client = fiona::ip::tcp::Socket::new(&ex);
+  let mut client = fiona::ip::tcp::Client::new(&ex);
 
   ioc.post(async move {
     let _s = acceptor.async_accept().await.unwrap();
