@@ -542,24 +542,20 @@ fn test_async_handshake() {
     let client_cfg = std::sync::Arc::new(make_tls_client_cfg());
 
     async move {
-      let mut client = fio::ip::tcp::Client::new(&ex);
-      client.timeout = std::time::Duration::from_secs(1);
-      client.async_connect(LOCALHOST, port).await.unwrap();
-
       let mut buf = vec![0_u8; 16];
       unsafe {
         buf.set_len(0);
       }
 
-      let mut tls_stream = rustls::ClientConnection::new(
-        client_cfg,
-        rustls::ServerName::try_from("localhost").unwrap(),
-      )
-      .unwrap();
+      let mut tls_client = fio::ip::tcp::tls::Client::new(&ex, client_cfg);
 
-      async_client_handshake_impl(&mut client, &mut tls_stream, buf).await;
+      let server_name = "localhost";
+      let ipv4_addr = LOCALHOST;
 
-      assert!(!tls_stream.is_handshaking());
+      let _buf = tls_client
+        .async_connect(server_name, ipv4_addr, port, buf)
+        .await
+        .unwrap();
 
       unsafe { NUM_RUNS += 1 };
     }

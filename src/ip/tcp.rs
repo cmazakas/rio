@@ -2,6 +2,8 @@ extern crate libc;
 
 use crate as fiona;
 
+pub mod tls;
+
 pub struct Acceptor {
   fd: i32,
   ex: fiona::Executor,
@@ -14,6 +16,10 @@ pub struct Socket {
 }
 
 pub struct Client {
+  s: Socket,
+}
+
+pub struct Server {
   s: Socket,
 }
 
@@ -527,6 +533,13 @@ impl Client {
   }
 }
 
+impl Server {
+  #[must_use]
+  pub fn new(ex: &fiona::Executor) -> Self {
+    Self { s: Socket::new(ex) }
+  }
+}
+
 impl std::ops::Deref for Client {
   type Target = Socket;
   fn deref(&self) -> &Self::Target {
@@ -535,6 +548,19 @@ impl std::ops::Deref for Client {
 }
 
 impl std::ops::DerefMut for Client {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.s
+  }
+}
+
+impl std::ops::Deref for Server {
+  type Target = Socket;
+  fn deref(&self) -> &Self::Target {
+    &self.s
+  }
+}
+
+impl std::ops::DerefMut for Server {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.s
   }
