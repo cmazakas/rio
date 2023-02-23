@@ -9,6 +9,12 @@ pub struct Client {
   client_cfg: Option<std::sync::Arc<rustls::ClientConfig>>,
 }
 
+pub struct Server {
+  s: fiona::ip::tcp::Server,
+  tls_stream: Option<rustls::ServerConnection>,
+  server_cfg: Option<std::sync::Arc<rustls::ServerConfig>>,
+}
+
 async fn async_client_handshake_impl(
   s: &mut fiona::ip::tcp::Socket,
   tls_stream: &mut rustls::ClientConnection,
@@ -87,5 +93,64 @@ impl Client {
 
       Ok(buf)
     }
+  }
+}
+
+async fn async_server_handshake_impl(
+  s: &mut fiona::ip::tcp::Socket,
+  tls_stream: &mut rustls::ServerConnection,
+  mut buf: Vec<u8>,
+) -> Vec<u8> {
+  assert!(tls_stream.is_handshaking());
+
+  while tls_stream.is_handshaking() {
+    if tls_stream.wants_read() {
+      buf.clear();
+      buf = s.async_read(buf).await.unwrap();
+      assert!(!buf.is_empty());
+
+      tls_stream.read_tls(&mut &buf[..]).unwrap();
+      tls_stream.process_new_packets().unwrap();
+    }
+
+    if tls_stream.wants_write() {
+      buf.clear();
+      tls_stream.write_tls(&mut buf).unwrap();
+      buf = s.async_write(buf).await.unwrap();
+    }
+  }
+
+  buf
+}
+
+impl Server {
+  #[must_use]
+  pub fn new(
+    s: fiona::ip::tcp::Server,
+    server_cfg: std::sync::Arc<rustls::ServerConfig>,
+  ) -> Self {
+    Self {
+      s,
+      server_cfg: Some(server_cfg),
+      tls_stream: None,
+    }
+  }
+
+  pub async fn async_handshake(
+    &mut self,
+    buf: Vec<u8>,
+  ) -> Result<Vec<u8>, i32> {
+    self.tls_stream = Some(
+      rustls::ServerConnection::new(self.server_cfg.take().unwrap()).unwrap(),
+    );
+
+    let buf = async_server_handshake_impl(
+      &mut self.s,
+      self.tls_stream.as_mut().unwrap(),
+      buf,
+    )
+    .await;
+
+    Ok(buf)
   }
 }

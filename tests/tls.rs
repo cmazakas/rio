@@ -433,70 +433,6 @@ fn tls_server_test() {
   assert_eq!(unsafe { NUM_RUNS }, 2);
 }
 
-async fn async_server_handshake_impl(
-  s: &mut fiona::ip::tcp::Socket,
-  tls_stream: &mut rustls::ServerConnection,
-  mut buf: Vec<u8>,
-) -> Vec<u8> {
-  assert!(tls_stream.is_handshaking());
-
-  while tls_stream.is_handshaking() {
-    if tls_stream.wants_read() {
-      buf.clear();
-      buf = s.async_read(buf).await.unwrap();
-      assert!(!buf.is_empty());
-
-      tls_stream.read_tls(&mut &buf[..]).unwrap();
-      tls_stream.process_new_packets().unwrap();
-    }
-
-    if tls_stream.wants_write() {
-      buf.clear();
-      tls_stream.write_tls(&mut buf).unwrap();
-      buf = s.async_write(buf).await.unwrap();
-    }
-  }
-
-  assert!(!tls_stream.is_handshaking());
-
-  buf
-}
-
-async fn async_client_handshake_impl(
-  s: &mut fiona::ip::tcp::Socket,
-  tls_stream: &mut rustls::ClientConnection,
-  mut buf: Vec<u8>,
-) -> Vec<u8> {
-  assert!(tls_stream.is_handshaking());
-
-  while tls_stream.is_handshaking() {
-    if tls_stream.wants_write() {
-      buf.clear();
-      tls_stream.write_tls(&mut buf).unwrap();
-      buf = s.async_write(buf).await.unwrap();
-      assert!(!buf.is_empty());
-    }
-
-    if tls_stream.wants_read() {
-      buf.clear();
-      buf = s.async_read(buf).await.unwrap();
-      tls_stream.read_tls(&mut &buf[..]).unwrap();
-      tls_stream.process_new_packets().unwrap();
-    }
-  }
-
-  while tls_stream.wants_write() {
-    buf.clear();
-    tls_stream.write_tls(&mut buf).unwrap();
-    buf = s.async_write(buf).await.unwrap();
-    assert!(!buf.is_empty());
-  }
-
-  assert!(!tls_stream.is_handshaking());
-
-  buf
-}
-
 #[test]
 fn test_async_handshake() {
   use std::io::Write;
@@ -519,16 +455,13 @@ fn test_async_handshake() {
       let mut peer = acceptor.async_accept().await.unwrap();
       peer.timeout = std::time::Duration::from_secs(1);
 
-      let mut tls_stream = rustls::ServerConnection::new(server_cfg).unwrap();
-      assert!(tls_stream.is_handshaking());
-
       let mut buf = vec![0_u8; 16];
       unsafe {
         buf.set_len(0);
       }
 
-      let _buf =
-        async_server_handshake_impl(&mut peer, &mut tls_stream, buf).await;
+      let mut tls_server = fio::ip::tcp::tls::Server::new(peer, server_cfg);
+      let _buf = tls_server.async_handshake(buf).await.unwrap();
 
       unsafe { NUM_RUNS += 1 };
     }

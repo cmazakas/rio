@@ -99,7 +99,7 @@ impl<'a> Drop for WriteFuture<'a> {
 }
 
 impl<'a> std::future::Future for AcceptFuture<'a> {
-  type Output = Result<Socket, i32>;
+  type Output = Result<Server, i32>;
   fn poll(
     self: std::pin::Pin<&mut Self>,
     _cx: &mut std::task::Context<'_>,
@@ -150,7 +150,9 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
       //   addr.sin_port.to_be()
       // );
       std::task::Poll::Ready(Ok(unsafe {
-        Socket::from_raw(self.ex.clone(), fd)
+        Server {
+          s: Socket::from_raw(self.ex.clone(), fd),
+        }
       }))
     }
   }
