@@ -461,7 +461,12 @@ fn test_async_handshake() {
       }
 
       let mut tls_server = fio::ip::tcp::tls::Server::new(peer, server_cfg);
-      let _buf = tls_server.async_handshake(buf).await.unwrap();
+      let mut buf = tls_server.async_handshake(buf).await.unwrap();
+
+      buf.clear();
+      let buf = tls_server.async_read(buf).await.unwrap();
+
+      assert_eq!("hello, world!", std::str::from_utf8(&buf).unwrap());
 
       unsafe { NUM_RUNS += 1 };
     }
@@ -485,10 +490,15 @@ fn test_async_handshake() {
       let server_name = "localhost";
       let ipv4_addr = LOCALHOST;
 
-      let _buf = tls_client
+      let mut buf = tls_client
         .async_connect(server_name, ipv4_addr, port, buf)
         .await
         .unwrap();
+
+      buf.clear();
+      buf.write_all(b"hello, world!").unwrap();
+
+      let _buf = tls_client.async_write(buf).await.unwrap();
 
       unsafe { NUM_RUNS += 1 };
     }
