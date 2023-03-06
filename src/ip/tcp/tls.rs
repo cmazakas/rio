@@ -100,19 +100,46 @@ impl Client {
     self.tls_stream.as_mut().unwrap()
   }
 
-  pub async fn async_read(&mut self, buf: Vec<u8>) -> Result<Vec<u8>, i32> {
+  pub async fn async_read(&mut self, mut buf: Vec<u8>) -> Result<Vec<u8>, i32> {
     assert!(self.connected);
     assert!(!self.tls_stream().is_handshaking());
     assert!(self.tls_stream().wants_read());
 
-    let mut buf = self.s.async_read(buf).await?;
+    let tls = self.tls_stream.as_mut().unwrap();
+    let info = tls.process_new_packets().unwrap();
 
-    let tls = self.tls_stream();
-    tls.read_tls(&mut &buf[..]).unwrap();
-    tls.process_new_packets().unwrap();
+    let mut n = info.plaintext_bytes_to_read();
+    if n > 0 {
+      buf.clear();
+      buf.resize(buf.capacity(), 0);
+      let r = tls.reader().read(&mut buf).unwrap();
+      unsafe {
+        buf.set_len(r);
+      }
 
-    buf.clear();
-    tls.reader().read_to_end(&mut buf).unwrap_err();
+      return Ok(buf);
+    }
+
+    let mut info = tls.process_new_packets().unwrap();
+
+    while info.plaintext_bytes_to_read() == 0 {
+      buf.clear();
+      buf = self.s.async_read(buf).await?;
+
+      tls.read_tls(&mut &buf[..]).unwrap();
+      info = tls.process_new_packets().unwrap();
+    }
+
+    n = info.plaintext_bytes_to_read();
+    if n > 0 {
+      buf.clear();
+      buf.resize(buf.capacity(), 0);
+      let r = tls.reader().read(&mut buf).unwrap();
+      unsafe {
+        buf.set_len(r);
+      }
+      return Ok(buf);
+    }
 
     Ok(buf)
   }
@@ -194,7 +221,7 @@ impl Server {
           assert!(!buf.is_empty());
 
           tls_stream.read_tls(&mut &buf[..]).unwrap();
-          let info = tls_stream.process_new_packets().unwrap();
+          let _info = tls_stream.process_new_packets().unwrap();
         }
 
         if tls_stream.wants_write() {
@@ -253,13 +280,17 @@ impl Server {
     let n = info.plaintext_bytes_to_read();
     if n > 0 {
       buf.clear();
-      buf.resize(n, 0);
-      tls.reader().read_exact(&mut buf).unwrap();
+      buf.resize(buf.capacity(), 0);
+      unsafe {
+        let r = tls.reader().read(&mut buf).unwrap();
+        buf.set_len(r);
+      }
 
       return Ok(buf);
     }
 
     if info.peer_has_closed() {
+      tls.send_close_notify();
       while tls.wants_write() {
         buf.clear();
         tls.write_tls(&mut buf).unwrap();
@@ -277,9 +308,22 @@ impl Server {
     let n = info.plaintext_bytes_to_read();
     if n > 0 {
       buf.clear();
-      buf.resize(n, 0);
-      tls.reader().read_exact(&mut buf).unwrap();
+      buf.resize(buf.capacity(), 0);
+      unsafe {
+        let r = tls.reader().read(&mut buf).unwrap();
+        buf.set_len(r);
+      }
 
+      return Ok(buf);
+    }
+
+    if info.peer_has_closed() {
+      tls.send_close_notify();
+      while tls.wants_write() {
+        buf.clear();
+        tls.write_tls(&mut buf).unwrap();
+        buf = self.s.async_write(buf).await?;
+      }
       return Ok(buf);
     }
 
@@ -292,14 +336,16 @@ impl Server {
   ) -> Result<Vec<u8>, i32> {
     assert!(!self.tls_stream().is_handshaking());
 
-    let tls = self.tls_stream();
+    let tls = self.tls_stream.as_mut().unwrap();
 
     tls.writer().write_all(&buf).unwrap();
 
-    buf.clear();
-    tls.write_tls(&mut buf).unwrap();
+    while tls.wants_write() {
+      buf.clear();
+      tls.write_tls(&mut buf).unwrap();
 
-    let buf = self.s.async_write(buf).await?;
+      buf = self.s.async_write(buf).await?;
+    }
 
     Ok(buf)
   }

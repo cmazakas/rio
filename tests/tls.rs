@@ -464,10 +464,21 @@ fn test_async_handshake() {
 
       let mut buf = tls_server.async_handshake(buf).await.unwrap();
 
-      buf.clear();
-      let buf = tls_server.async_read(buf).await.unwrap();
+      for _idx in 0..100 {
+        buf.clear();
 
-      assert_eq!("hello, world!", std::str::from_utf8(&buf).unwrap());
+        buf = tls_server.async_read(buf).await.unwrap();
+
+        let str = std::str::from_utf8(&buf).unwrap();
+        assert_eq!("hello, world!", str);
+
+        let mut string = format!("echoing: {str}");
+
+        buf.clear();
+        buf.append(unsafe { string.as_mut_vec() });
+
+        buf = tls_server.async_write(buf).await.unwrap();
+      }
 
       tls_server.async_read(buf).await.unwrap();
 
@@ -498,10 +509,17 @@ fn test_async_handshake() {
         .await
         .unwrap();
 
-      buf.clear();
-      buf.write_all(b"hello, world!").unwrap();
+      for _idx in 0..100 {
+        buf.clear();
+        buf.write_all(b"hello, world!").unwrap();
+        buf = tls_client.async_write(buf).await.unwrap();
 
-      let buf = tls_client.async_write(buf).await.unwrap();
+        buf.clear();
+        buf = tls_client.async_read(buf).await.unwrap();
+
+        let str = std::str::from_utf8(&buf).unwrap();
+        assert_eq!("echoing: hello, world!", str);
+      }
 
       tls_client.async_shutdown(buf).await.unwrap();
 
