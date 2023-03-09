@@ -17,55 +17,6 @@ pub struct Server {
   server_cfg: Option<std::sync::Arc<rustls::ServerConfig>>,
 }
 
-async fn async_client_handshake_impl(
-  s: &mut fiona::ip::tcp::Socket,
-  tls_stream: &mut rustls::ClientConnection,
-  mut buf: Vec<u8>,
-) -> Vec<u8> {
-  assert!(tls_stream.is_handshaking());
-
-  while tls_stream.is_handshaking() {
-    if tls_stream.wants_write() {
-      buf.clear();
-      buf.resize(buf.capacity(), 0);
-
-      let mut b = buf.as_mut_slice();
-      let n = tls_stream.write_tls(&mut b).unwrap();
-      unsafe {
-        buf.set_len(n);
-      }
-
-      buf = s.async_write(buf).await.unwrap();
-      assert!(!buf.is_empty());
-    }
-
-    if tls_stream.wants_read() {
-      buf.clear();
-      buf = s.async_read(buf).await.unwrap();
-      tls_stream.read_tls(&mut &buf[..]).unwrap();
-      tls_stream.process_new_packets().unwrap();
-    }
-  }
-
-  while tls_stream.wants_write() {
-    buf.clear();
-    buf.resize(buf.capacity(), 0);
-
-    let mut b = buf.as_mut_slice();
-    let n = tls_stream.write_tls(&mut b).unwrap();
-    unsafe {
-      buf.set_len(n);
-    }
-
-    buf = s.async_write(buf).await.unwrap();
-    assert!(!buf.is_empty());
-  }
-
-  assert!(!tls_stream.is_handshaking());
-
-  buf
-}
-
 impl Client {
   #[must_use]
   pub fn new(
@@ -87,6 +38,55 @@ impl Client {
     port: u16,
     buf: Vec<u8>,
   ) -> Result<Vec<u8>, i32> {
+    async fn async_client_handshake_impl(
+      s: &mut fiona::ip::tcp::Socket,
+      tls_stream: &mut rustls::ClientConnection,
+      mut buf: Vec<u8>,
+    ) -> Vec<u8> {
+      assert!(tls_stream.is_handshaking());
+
+      while tls_stream.is_handshaking() {
+        if tls_stream.wants_write() {
+          buf.clear();
+          buf.resize(buf.capacity(), 0);
+
+          let mut b = buf.as_mut_slice();
+          let n = tls_stream.write_tls(&mut b).unwrap();
+          unsafe {
+            buf.set_len(n);
+          }
+
+          buf = s.async_write(buf).await.unwrap();
+          assert!(!buf.is_empty());
+        }
+
+        if tls_stream.wants_read() {
+          buf.clear();
+          buf = s.async_read(buf).await.unwrap();
+          tls_stream.read_tls(&mut &buf[..]).unwrap();
+          tls_stream.process_new_packets().unwrap();
+        }
+      }
+
+      while tls_stream.wants_write() {
+        buf.clear();
+        buf.resize(buf.capacity(), 0);
+
+        let mut b = buf.as_mut_slice();
+        let n = tls_stream.write_tls(&mut b).unwrap();
+        unsafe {
+          buf.set_len(n);
+        }
+
+        buf = s.async_write(buf).await.unwrap();
+        assert!(!buf.is_empty());
+      }
+
+      assert!(!tls_stream.is_handshaking());
+
+      buf
+    }
+
     assert!(!self.connected);
     self.s.async_connect(ipv4_addr, port).await?;
 
