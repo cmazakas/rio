@@ -27,7 +27,14 @@ async fn async_client_handshake_impl(
   while tls_stream.is_handshaking() {
     if tls_stream.wants_write() {
       buf.clear();
-      tls_stream.write_tls(&mut buf).unwrap();
+      buf.resize(buf.capacity(), 0);
+
+      let mut b = buf.as_mut_slice();
+      let n = tls_stream.write_tls(&mut b).unwrap();
+      unsafe {
+        buf.set_len(n);
+      }
+
       buf = s.async_write(buf).await.unwrap();
       assert!(!buf.is_empty());
     }
@@ -42,7 +49,14 @@ async fn async_client_handshake_impl(
 
   while tls_stream.wants_write() {
     buf.clear();
-    tls_stream.write_tls(&mut buf).unwrap();
+    buf.resize(buf.capacity(), 0);
+
+    let mut b = buf.as_mut_slice();
+    let n = tls_stream.write_tls(&mut b).unwrap();
+    unsafe {
+      buf.set_len(n);
+    }
+
     buf = s.async_write(buf).await.unwrap();
     assert!(!buf.is_empty());
   }
@@ -226,8 +240,16 @@ impl Server {
 
         if tls_stream.wants_write() {
           buf.clear();
-          tls_stream.write_tls(&mut buf).unwrap();
+          buf.resize(buf.capacity(), 0);
+
+          let mut b = buf.as_mut_slice();
+          let n = tls_stream.write_tls(&mut b).unwrap();
+          unsafe {
+            buf.set_len(n);
+          }
+
           buf = s.async_write(buf).await.unwrap();
+          assert!(!buf.is_empty());
         }
       }
 
@@ -256,22 +278,31 @@ impl Server {
     assert!(!self.tls_stream().is_handshaking());
 
     if !self.tls_stream().wants_read() {
-      assert!(self
+      let closed = self
         .tls_stream()
         .process_new_packets()
         .unwrap()
-        .peer_has_closed());
+        .peer_has_closed();
 
-      let tls = self.tls_stream.as_mut().unwrap();
-      tls.send_close_notify();
+      if closed {
+        let tls = self.tls_stream.as_mut().unwrap();
+        tls.send_close_notify();
 
-      while tls.wants_write() {
-        buf.clear();
-        tls.write_tls(&mut buf).unwrap();
-        buf = self.s.async_write(buf).await?;
+        while tls.wants_write() {
+          buf.clear();
+          buf.resize(buf.capacity(), 0);
+          let mut b = buf.as_mut_slice();
+
+          let n = tls.write_tls(&mut b).unwrap();
+          unsafe {
+            buf.set_len(n);
+          }
+
+          buf = self.s.async_write(buf).await?;
+        }
+
+        return Ok(buf);
       }
-
-      return Ok(buf);
     }
 
     let tls = self.tls_stream.as_mut().unwrap();
@@ -293,7 +324,14 @@ impl Server {
       tls.send_close_notify();
       while tls.wants_write() {
         buf.clear();
-        tls.write_tls(&mut buf).unwrap();
+        buf.resize(buf.capacity(), 0);
+        let mut b = buf.as_mut_slice();
+
+        let n = tls.write_tls(&mut b).unwrap();
+        unsafe {
+          buf.set_len(n);
+        }
+
         buf = self.s.async_write(buf).await?;
       }
       return Ok(buf);
@@ -321,7 +359,14 @@ impl Server {
       tls.send_close_notify();
       while tls.wants_write() {
         buf.clear();
-        tls.write_tls(&mut buf).unwrap();
+        buf.resize(buf.capacity(), 0);
+        let mut b = buf.as_mut_slice();
+
+        let n = tls.write_tls(&mut b).unwrap();
+        unsafe {
+          buf.set_len(n);
+        }
+
         buf = self.s.async_write(buf).await?;
       }
       return Ok(buf);
@@ -342,7 +387,13 @@ impl Server {
 
     while tls.wants_write() {
       buf.clear();
-      tls.write_tls(&mut buf).unwrap();
+      buf.resize(buf.capacity(), 0);
+      let mut b = buf.as_mut_slice();
+
+      let n = tls.write_tls(&mut b).unwrap();
+      unsafe {
+        buf.set_len(n);
+      }
 
       buf = self.s.async_write(buf).await?;
     }

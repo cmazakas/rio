@@ -455,19 +455,25 @@ fn test_async_handshake() {
       let mut peer = acceptor.async_accept().await.unwrap();
       peer.timeout = std::time::Duration::from_secs(1);
 
-      let mut buf = vec![0_u8; 16];
+      let mut buf = vec![0_u8; 64];
       unsafe {
         buf.set_len(0);
       }
+
+      let p = buf.as_ptr();
+      let c = buf.capacity();
 
       let mut tls_server = fio::ip::tcp::tls::Server::new(peer, server_cfg);
 
       let mut buf = tls_server.async_handshake(buf).await.unwrap();
 
+      assert_eq!(buf.as_ptr(), p);
+
       for _idx in 0..100 {
         buf.clear();
-
         buf = tls_server.async_read(buf).await.unwrap();
+        assert_eq!(buf.as_ptr(), p);
+        assert_eq!(buf.capacity(), c);
 
         let str = std::str::from_utf8(&buf).unwrap();
         assert_eq!("hello, world!", str);
@@ -476,11 +482,14 @@ fn test_async_handshake() {
 
         buf.clear();
         buf.append(unsafe { string.as_mut_vec() });
-
         buf = tls_server.async_write(buf).await.unwrap();
+        assert_eq!(buf.as_ptr(), p);
+        assert_eq!(buf.capacity(), c);
       }
 
-      tls_server.async_read(buf).await.unwrap();
+      let buf = tls_server.async_read(buf).await.unwrap();
+      assert_eq!(buf.as_ptr(), p);
+      assert_eq!(buf.capacity(), c);
 
       unsafe { NUM_RUNS += 1 };
     }
@@ -494,10 +503,13 @@ fn test_async_handshake() {
     let client_cfg = std::sync::Arc::new(make_tls_client_cfg());
 
     async move {
-      let mut buf = vec![0_u8; 16];
+      let mut buf = vec![0_u8; 64];
       unsafe {
         buf.set_len(0);
       }
+
+      let p = buf.as_ptr();
+      let c = buf.capacity();
 
       let mut tls_client = fio::ip::tcp::tls::Client::new(&ex, client_cfg);
 
@@ -509,19 +521,28 @@ fn test_async_handshake() {
         .await
         .unwrap();
 
+      assert_eq!(buf.as_ptr(), p);
+      assert_eq!(buf.capacity(), c);
+
       for _idx in 0..100 {
         buf.clear();
         buf.write_all(b"hello, world!").unwrap();
         buf = tls_client.async_write(buf).await.unwrap();
+        assert_eq!(buf.as_ptr(), p);
+        assert_eq!(buf.capacity(), c);
 
         buf.clear();
         buf = tls_client.async_read(buf).await.unwrap();
+        assert_eq!(buf.as_ptr(), p);
+        assert_eq!(buf.capacity(), c);
 
         let str = std::str::from_utf8(&buf).unwrap();
         assert_eq!("echoing: hello, world!", str);
       }
 
-      tls_client.async_shutdown(buf).await.unwrap();
+      let buf = tls_client.async_shutdown(buf).await.unwrap();
+      assert_eq!(buf.as_ptr(), p);
+      assert_eq!(buf.capacity(), c);
 
       unsafe { NUM_RUNS += 1 };
     }
