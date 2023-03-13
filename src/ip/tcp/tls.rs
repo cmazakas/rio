@@ -88,11 +88,56 @@ fn read_plaintext<Data>(
   Ok(buf)
 }
 
-impl Client {
-  fn tls_stream(&mut self) -> &mut rustls::ClientConnection {
-    self.tls_stream.as_mut().unwrap()
+async fn async_read_impl<Data>(
+  s: &mut fiona::ip::tcp::Socket,
+  tls: &mut rustls::ConnectionCommon<Data>,
+  mut buf: Vec<u8>,
+) -> Result<Vec<u8>, i32> {
+  assert!(!tls.is_handshaking());
+
+  let mut info = tls.process_new_packets().unwrap();
+
+  let mut n = info.plaintext_bytes_to_read();
+  if n > 0 {
+    buf = read_plaintext(tls, buf).unwrap();
+    return Ok(buf);
   }
 
+  if !tls.wants_read() && info.peer_has_closed() {
+    tls.send_close_notify();
+    buf = send_full_tls(s, tls, buf).await.unwrap();
+    return Ok(buf);
+  }
+
+  buf.clear();
+  buf = s.async_read(buf).await?;
+  tls.read_tls(&mut &buf[..]).unwrap();
+  info = tls.process_new_packets().unwrap();
+  if info.plaintext_bytes_to_read() == 0 {
+    while info.plaintext_bytes_to_read() == 0 && !info.peer_has_closed() {
+      buf.clear();
+      buf = s.async_read(buf).await?;
+      tls.read_tls(&mut &buf[..]).unwrap();
+      info = tls.process_new_packets().unwrap();
+    }
+  }
+
+  n = info.plaintext_bytes_to_read();
+  if n > 0 {
+    buf = read_plaintext(tls, buf).unwrap();
+    return Ok(buf);
+  }
+
+  if info.peer_has_closed() {
+    tls.send_close_notify();
+    buf = send_full_tls(s, tls, buf).await.unwrap();
+    return Ok(buf);
+  }
+
+  Ok(buf)
+}
+
+impl Client {
   #[must_use]
   pub fn new(
     ex: &fiona::Executor,
@@ -162,45 +207,9 @@ impl Client {
     Ok(buf)
   }
 
-  pub async fn async_read(&mut self, mut buf: Vec<u8>) -> Result<Vec<u8>, i32> {
+  pub async fn async_read(&mut self, buf: Vec<u8>) -> Result<Vec<u8>, i32> {
     assert!(self.connected);
-    assert!(!self.tls_stream().is_handshaking());
-
-    let tls = self.tls_stream.as_mut().unwrap();
-    let mut info = tls.process_new_packets().unwrap();
-
-    let mut n = info.plaintext_bytes_to_read();
-    if n > 0 {
-      buf = read_plaintext(tls, buf).unwrap();
-      return Ok(buf);
-    }
-
-    if !tls.wants_read() && info.peer_has_closed() {
-      tls.send_close_notify();
-      buf = send_full_tls(&mut self.s, tls, buf).await.unwrap();
-      return Ok(buf);
-    }
-
-    while info.plaintext_bytes_to_read() == 0 {
-      buf.clear();
-      buf = self.s.async_read(buf).await?;
-      tls.read_tls(&mut &buf[..]).unwrap();
-      info = tls.process_new_packets().unwrap();
-    }
-
-    n = info.plaintext_bytes_to_read();
-    if n > 0 {
-      buf = read_plaintext(tls, buf).unwrap();
-      return Ok(buf);
-    }
-
-    if info.peer_has_closed() {
-      tls.send_close_notify();
-      buf = send_full_tls(&mut self.s, tls, buf).await.unwrap();
-      return Ok(buf);
-    }
-
-    Ok(buf)
+    async_read_impl(&mut self.s, self.tls_stream.as_mut().unwrap(), buf).await
   }
 
   pub async fn async_write(&mut self, buf: Vec<u8>) -> Result<Vec<u8>, i32> {
@@ -294,42 +303,10 @@ impl Server {
     Ok(buf)
   }
 
-  pub async fn async_read(&mut self, mut buf: Vec<u8>) -> Result<Vec<u8>, i32> {
+  pub async fn async_read(&mut self, buf: Vec<u8>) -> Result<Vec<u8>, i32> {
     assert!(!self.tls_stream().is_handshaking());
 
-    let tls = self.tls_stream.as_mut().unwrap();
-    let mut info = tls.process_new_packets().unwrap();
-
-    let n = info.plaintext_bytes_to_read();
-    if n > 0 {
-      buf = read_plaintext(tls, buf).unwrap();
-      return Ok(buf);
-    }
-
-    if !tls.wants_read() && info.peer_has_closed() {
-      tls.send_close_notify();
-      buf = send_full_tls(&mut self.s, tls, buf).await.unwrap();
-      return Ok(buf);
-    }
-
-    buf.clear();
-    buf = self.s.async_read(buf).await?;
-    tls.read_tls(&mut &buf[..]).unwrap();
-    info = tls.process_new_packets().unwrap();
-
-    let n = info.plaintext_bytes_to_read();
-    if n > 0 {
-      buf = read_plaintext(tls, buf).unwrap();
-      return Ok(buf);
-    }
-
-    if info.peer_has_closed() {
-      tls.send_close_notify();
-      buf = send_full_tls(&mut self.s, tls, buf).await.unwrap();
-      return Ok(buf);
-    }
-
-    Ok(buf)
+    async_read_impl(&mut self.s, self.tls_stream.as_mut().unwrap(), buf).await
   }
 
   pub async fn async_write(&mut self, buf: Vec<u8>) -> Result<Vec<u8>, i32> {
