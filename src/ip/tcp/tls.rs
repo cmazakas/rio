@@ -17,126 +17,6 @@ pub struct Server {
   server_cfg: Option<std::sync::Arc<rustls::ServerConfig>>,
 }
 
-async fn async_write_impl<Data>(
-  s: &mut fiona::ip::tcp::Socket,
-  tls: &mut rustls::ConnectionCommon<Data>,
-  mut buf: Vec<u8>,
-) -> Result<Vec<u8>, i32> {
-  assert!(!tls.is_handshaking());
-
-  tls.writer().write_all(&buf).unwrap();
-
-  while tls.wants_write() {
-    buf.clear();
-    buf.resize(buf.capacity(), 0);
-    let mut b = buf.as_mut_slice();
-
-    let n = tls.write_tls(&mut b).unwrap();
-    unsafe {
-      buf.set_len(n);
-    }
-
-    buf = s.async_write(buf).await?;
-  }
-
-  Ok(buf)
-}
-
-async fn async_write_tls_helper<Data>(
-  s: &mut fiona::ip::tcp::Socket,
-  tls: &mut rustls::ConnectionCommon<Data>,
-  mut buf: Vec<u8>,
-) -> Result<Vec<u8>, i32> {
-  buf.clear();
-  buf.resize(buf.capacity(), 0);
-
-  let mut b = buf.as_mut_slice();
-  let n = tls.write_tls(&mut b).unwrap();
-  unsafe {
-    buf.set_len(n);
-  }
-
-  buf = s.async_write(buf).await?;
-  assert!(!buf.is_empty());
-
-  Ok(buf)
-}
-
-async fn send_full_tls<Data>(
-  s: &mut fiona::ip::tcp::Socket,
-  tls: &mut rustls::ConnectionCommon<Data>,
-  mut buf: Vec<u8>,
-) -> Result<Vec<u8>, i32> {
-  while tls.wants_write() {
-    buf = async_write_tls_helper(s, tls, buf).await.unwrap();
-  }
-
-  Ok(buf)
-}
-
-#[allow(clippy::unnecessary_wraps)]
-fn read_plaintext<Data>(
-  tls: &mut rustls::ConnectionCommon<Data>,
-  mut buf: Vec<u8>,
-) -> Result<Vec<u8>, i32> {
-  buf.clear();
-  buf.resize(buf.capacity(), 0);
-  let r = tls.reader().read(&mut buf).unwrap();
-  unsafe {
-    buf.set_len(r);
-  }
-  Ok(buf)
-}
-
-async fn async_read_impl<Data>(
-  s: &mut fiona::ip::tcp::Socket,
-  tls: &mut rustls::ConnectionCommon<Data>,
-  mut buf: Vec<u8>,
-) -> Result<Vec<u8>, i32> {
-  assert!(!tls.is_handshaking());
-
-  let mut info = tls.process_new_packets().unwrap();
-
-  let mut n = info.plaintext_bytes_to_read();
-  if n > 0 {
-    buf = read_plaintext(tls, buf).unwrap();
-    return Ok(buf);
-  }
-
-  if !tls.wants_read() && info.peer_has_closed() {
-    tls.send_close_notify();
-    buf = send_full_tls(s, tls, buf).await.unwrap();
-    return Ok(buf);
-  }
-
-  buf.clear();
-  buf = s.async_read(buf).await?;
-  tls.read_tls(&mut &buf[..]).unwrap();
-  info = tls.process_new_packets().unwrap();
-  if info.plaintext_bytes_to_read() == 0 {
-    while info.plaintext_bytes_to_read() == 0 && !info.peer_has_closed() {
-      buf.clear();
-      buf = s.async_read(buf).await?;
-      tls.read_tls(&mut &buf[..]).unwrap();
-      info = tls.process_new_packets().unwrap();
-    }
-  }
-
-  n = info.plaintext_bytes_to_read();
-  if n > 0 {
-    buf = read_plaintext(tls, buf).unwrap();
-    return Ok(buf);
-  }
-
-  if info.peer_has_closed() {
-    tls.send_close_notify();
-    buf = send_full_tls(s, tls, buf).await.unwrap();
-    return Ok(buf);
-  }
-
-  Ok(buf)
-}
-
 impl Client {
   #[must_use]
   pub fn new(
@@ -313,4 +193,124 @@ impl Server {
     let tls = self.tls_stream.as_mut().unwrap();
     async_write_impl(&mut self.s, tls, buf).await
   }
+}
+
+async fn async_write_impl<Data>(
+  s: &mut fiona::ip::tcp::Socket,
+  tls: &mut rustls::ConnectionCommon<Data>,
+  mut buf: Vec<u8>,
+) -> Result<Vec<u8>, i32> {
+  assert!(!tls.is_handshaking());
+
+  tls.writer().write_all(&buf).unwrap();
+
+  while tls.wants_write() {
+    buf.clear();
+    buf.resize(buf.capacity(), 0);
+    let mut b = buf.as_mut_slice();
+
+    let n = tls.write_tls(&mut b).unwrap();
+    unsafe {
+      buf.set_len(n);
+    }
+
+    buf = s.async_write(buf).await?;
+  }
+
+  Ok(buf)
+}
+
+async fn async_write_tls_helper<Data>(
+  s: &mut fiona::ip::tcp::Socket,
+  tls: &mut rustls::ConnectionCommon<Data>,
+  mut buf: Vec<u8>,
+) -> Result<Vec<u8>, i32> {
+  buf.clear();
+  buf.resize(buf.capacity(), 0);
+
+  let mut b = buf.as_mut_slice();
+  let n = tls.write_tls(&mut b).unwrap();
+  unsafe {
+    buf.set_len(n);
+  }
+
+  buf = s.async_write(buf).await?;
+  assert!(!buf.is_empty());
+
+  Ok(buf)
+}
+
+async fn send_full_tls<Data>(
+  s: &mut fiona::ip::tcp::Socket,
+  tls: &mut rustls::ConnectionCommon<Data>,
+  mut buf: Vec<u8>,
+) -> Result<Vec<u8>, i32> {
+  while tls.wants_write() {
+    buf = async_write_tls_helper(s, tls, buf).await.unwrap();
+  }
+
+  Ok(buf)
+}
+
+#[allow(clippy::unnecessary_wraps)]
+fn read_plaintext<Data>(
+  tls: &mut rustls::ConnectionCommon<Data>,
+  mut buf: Vec<u8>,
+) -> Result<Vec<u8>, i32> {
+  buf.clear();
+  buf.resize(buf.capacity(), 0);
+  let r = tls.reader().read(&mut buf).unwrap();
+  unsafe {
+    buf.set_len(r);
+  }
+  Ok(buf)
+}
+
+async fn async_read_impl<Data>(
+  s: &mut fiona::ip::tcp::Socket,
+  tls: &mut rustls::ConnectionCommon<Data>,
+  mut buf: Vec<u8>,
+) -> Result<Vec<u8>, i32> {
+  assert!(!tls.is_handshaking());
+
+  let mut info = tls.process_new_packets().unwrap();
+
+  let mut n = info.plaintext_bytes_to_read();
+  if n > 0 {
+    buf = read_plaintext(tls, buf).unwrap();
+    return Ok(buf);
+  }
+
+  if !tls.wants_read() && info.peer_has_closed() {
+    tls.send_close_notify();
+    buf = send_full_tls(s, tls, buf).await.unwrap();
+    return Ok(buf);
+  }
+
+  buf.clear();
+  buf = s.async_read(buf).await?;
+  tls.read_tls(&mut &buf[..]).unwrap();
+  info = tls.process_new_packets().unwrap();
+  if info.plaintext_bytes_to_read() == 0 {
+    while info.plaintext_bytes_to_read() == 0 && !info.peer_has_closed() {
+      buf.clear();
+      buf = s.async_read(buf).await?;
+      tls.read_tls(&mut &buf[..]).unwrap();
+      info = tls.process_new_packets().unwrap();
+    }
+  }
+
+  n = info.plaintext_bytes_to_read();
+  if n > 0 {
+    buf = read_plaintext(tls, buf).unwrap();
+    return Ok(buf);
+  }
+
+  if info.peer_has_closed() {
+    tls.send_close_notify();
+    buf = send_full_tls(s, tls, buf).await.unwrap();
+    return Ok(buf);
+  }
+
+  Ok(buf)
 }
