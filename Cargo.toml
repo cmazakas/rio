@@ -12,6 +12,7 @@ edition = "2021"
 
 [dependencies]
 libc = "0.2.139"
+nix = "0.26.2"
 rustls = "0.20.8"
 
 [build-dependencies]

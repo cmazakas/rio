@@ -14,6 +14,9 @@
 #![allow(non_camel_case_types)]
 
 extern crate libc as ext_libc;
+extern crate nix;
+
+pub use nix::errno::Errno;
 
 pub mod ip;
 pub mod libc;
