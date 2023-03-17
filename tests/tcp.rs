@@ -307,7 +307,7 @@ fn cancel_accept() {
     match result {
       Ok(_) => panic!("Ok is not valid for cancellation"),
       Err(err) => match err {
-        libc::ECANCELED => {}
+        fiona::Errno::ECANCELED => {}
         _ => panic!("incorrect errno value"),
       },
     }

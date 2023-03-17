@@ -1,4 +1,5 @@
 extern crate libc;
+extern crate nix;
 
 use crate as fiona;
 
@@ -64,6 +65,9 @@ unsafe fn drop_cancel(
   p: *mut fiona::op::FdStateImpl,
   ioc: *mut fiona::IoContextState,
 ) {
+  debug_assert!(!p.is_null());
+  debug_assert!(!ioc.is_null());
+
   if (*p).initiated && !(*p).done {
     let ring = (*ioc).ring;
     unsafe {
@@ -99,24 +103,25 @@ impl<'a> Drop for WriteFuture<'a> {
 }
 
 impl<'a> std::future::Future for AcceptFuture<'a> {
-  type Output = Result<Server, i32>;
+  type Output = Result<Server, fiona::Errno>;
   fn poll(
     self: std::pin::Pin<&mut Self>,
     _cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Self::Output> {
     let p = self.fds.get();
+    let accept_fds = unsafe { &mut *p };
 
-    if !unsafe { (*p).initiated } {
-      unsafe { (*p).initiated = true };
-      let fd = unsafe { (*p).fd };
+    if !accept_fds.initiated {
+      accept_fds.initiated = true;
+      let fd = accept_fds.fd;
       let ioc_state = unsafe { &mut *self.ex.get_state() };
-      unsafe { (*p).task = Some(ioc_state.task_ctx.unwrap()) };
+      accept_fds.task = Some(ioc_state.task_ctx.unwrap());
 
       let ring = unsafe { (*self.ex.get_state()).ring };
       let sqe = unsafe { fiona::liburing::io_uring_get_sqe(ring) };
       let user_data = self.fds.clone().into_raw().cast::<libc::c_void>();
 
-      let (addr, addrlen) = match unsafe { &mut (*p).op } {
+      let (addr, addrlen) = match &mut accept_fds.op {
         fiona::op::Op::Accept(ref mut s) => (
           std::ptr::addr_of_mut!(s.addr_in),
           std::ptr::addr_of_mut!(s.addr_len),
@@ -132,15 +137,15 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
       return std::task::Poll::Pending;
     }
 
-    if !unsafe { (*p).done } {
+    if !accept_fds.done {
       return std::task::Poll::Pending;
     }
 
-    let fd = unsafe { (*p).res };
+    let fd = accept_fds.res;
     if fd < 0 {
-      std::task::Poll::Ready(Err(-fd))
+      std::task::Poll::Ready(Err(unsafe { std::mem::transmute(-fd) }))
     } else {
-      // let addr = match unsafe { &mut (*p).op } {
+      // let addr = match &mut accept_fds.op {
       //   fiona::op::Op::Accept(ref mut s) => s.addr_in,
       //   _ => panic!("incorrect op type specified for the AcceptFuture"),
       // };
