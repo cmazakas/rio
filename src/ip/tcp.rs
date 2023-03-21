@@ -164,7 +164,7 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
 }
 
 impl<'a> std::future::Future for ConnectFuture<'a> {
-  type Output = Result<(), i32>;
+  type Output = Result<(), fiona::Errno>;
   fn poll(
     self: std::pin::Pin<&mut Self>,
     _cx: &mut std::task::Context<'_>,
@@ -181,7 +181,9 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
       }
 
       if connect_fds.res < 0 {
-        return std::task::Poll::Ready(Err(-connect_fds.res));
+        return std::task::Poll::Ready(Err(unsafe {
+          std::mem::transmute(-connect_fds.res)
+        }));
       }
 
       return std::task::Poll::Ready(Ok(()));
@@ -238,7 +240,7 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
 }
 
 impl<'a> std::future::Future for ReadFuture<'a> {
-  type Output = Result<Vec<u8>, i32>;
+  type Output = Result<Vec<u8>, fiona::Errno>;
 
   fn poll(
     self: std::pin::Pin<&mut Self>,
@@ -249,7 +251,9 @@ impl<'a> std::future::Future for ReadFuture<'a> {
 
     if read_fds.done {
       if read_fds.res < 0 {
-        return std::task::Poll::Ready(Err(-read_fds.res));
+        return std::task::Poll::Ready(Err(unsafe {
+          std::mem::transmute(-read_fds.res)
+        }));
       }
 
       let mut buf = match read_fds.op {
@@ -314,7 +318,7 @@ impl<'a> std::future::Future for ReadFuture<'a> {
 }
 
 impl<'a> std::future::Future for WriteFuture<'a> {
-  type Output = Result<Vec<u8>, i32>;
+  type Output = Result<Vec<u8>, fiona::Errno>;
   fn poll(
     self: std::pin::Pin<&mut Self>,
     _cx: &mut std::task::Context<'_>,
@@ -324,7 +328,9 @@ impl<'a> std::future::Future for WriteFuture<'a> {
 
     if fds.done {
       if fds.res < 0 {
-        return std::task::Poll::Ready(Err(-fds.res));
+        return std::task::Poll::Ready(Err(unsafe {
+          std::mem::transmute(-fds.res)
+        }));
       }
 
       let buf = match fds.op {
@@ -397,13 +403,17 @@ impl Acceptor {
     }
   }
 
-  pub fn listen(&mut self, ipv4_addr: u32, port: u16) -> Result<(), i32> {
+  pub fn listen(
+    &mut self,
+    ipv4_addr: u32,
+    port: u16,
+  ) -> Result<(), fiona::Errno> {
     match fiona::liburing::make_ipv4_tcp_server_socket(ipv4_addr, port) {
       Ok(fd) => {
         self.fd = fd;
         Ok(())
       }
-      Err(e) => Err(e),
+      Err(e) => Err(unsafe { std::mem::transmute(e) }),
     }
   }
 

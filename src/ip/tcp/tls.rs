@@ -37,7 +37,7 @@ impl Client {
     ipv4_addr: u32,
     port: u16,
     buf: Vec<u8>,
-  ) -> Result<Vec<u8>, i32> {
+  ) -> Result<Vec<u8>, fiona::Errno> {
     async fn async_client_handshake_impl(
       s: &mut fiona::ip::tcp::Socket,
       tls_stream: &mut rustls::ClientConnection,
@@ -87,12 +87,18 @@ impl Client {
     Ok(buf)
   }
 
-  pub async fn async_read(&mut self, buf: Vec<u8>) -> Result<Vec<u8>, i32> {
+  pub async fn async_read(
+    &mut self,
+    buf: Vec<u8>,
+  ) -> Result<Vec<u8>, fiona::Errno> {
     assert!(self.connected);
     async_read_impl(&mut self.s, self.tls_stream.as_mut().unwrap(), buf).await
   }
 
-  pub async fn async_write(&mut self, buf: Vec<u8>) -> Result<Vec<u8>, i32> {
+  pub async fn async_write(
+    &mut self,
+    buf: Vec<u8>,
+  ) -> Result<Vec<u8>, fiona::Errno> {
     let tls = self.tls_stream.as_mut().unwrap();
     async_write_impl(&mut self.s, tls, buf).await
   }
@@ -100,7 +106,7 @@ impl Client {
   pub async fn async_shutdown(
     &mut self,
     mut buf: Vec<u8>,
-  ) -> Result<Vec<u8>, i32> {
+  ) -> Result<Vec<u8>, fiona::Errno> {
     let tls = self.tls_stream.as_mut().unwrap();
 
     tls.send_close_notify();
@@ -183,13 +189,19 @@ impl Server {
     Ok(buf)
   }
 
-  pub async fn async_read(&mut self, buf: Vec<u8>) -> Result<Vec<u8>, i32> {
+  pub async fn async_read(
+    &mut self,
+    buf: Vec<u8>,
+  ) -> Result<Vec<u8>, fiona::Errno> {
     assert!(!self.tls_stream().is_handshaking());
 
     async_read_impl(&mut self.s, self.tls_stream.as_mut().unwrap(), buf).await
   }
 
-  pub async fn async_write(&mut self, buf: Vec<u8>) -> Result<Vec<u8>, i32> {
+  pub async fn async_write(
+    &mut self,
+    buf: Vec<u8>,
+  ) -> Result<Vec<u8>, fiona::Errno> {
     let tls = self.tls_stream.as_mut().unwrap();
     async_write_impl(&mut self.s, tls, buf).await
   }
@@ -199,7 +211,7 @@ async fn async_write_impl<Data>(
   s: &mut fiona::ip::tcp::Socket,
   tls: &mut rustls::ConnectionCommon<Data>,
   mut buf: Vec<u8>,
-) -> Result<Vec<u8>, i32> {
+) -> Result<Vec<u8>, fiona::Errno> {
   assert!(!tls.is_handshaking());
 
   tls.writer().write_all(&buf).unwrap();
@@ -224,7 +236,7 @@ async fn async_write_tls_helper<Data>(
   s: &mut fiona::ip::tcp::Socket,
   tls: &mut rustls::ConnectionCommon<Data>,
   mut buf: Vec<u8>,
-) -> Result<Vec<u8>, i32> {
+) -> Result<Vec<u8>, fiona::Errno> {
   buf.clear();
   buf.resize(buf.capacity(), 0);
 
@@ -270,7 +282,7 @@ async fn async_read_impl<Data>(
   s: &mut fiona::ip::tcp::Socket,
   tls: &mut rustls::ConnectionCommon<Data>,
   mut buf: Vec<u8>,
-) -> Result<Vec<u8>, i32> {
+) -> Result<Vec<u8>, fiona::Errno> {
   assert!(!tls.is_handshaking());
 
   let mut info = tls.process_new_packets().unwrap();
