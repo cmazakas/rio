@@ -272,7 +272,7 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
           std::ptr::addr_of_mut!(s.addr_in),
           std::ptr::addr_of_mut!(s.addr_len),
         ),
-        _ => panic!("incorrect op type specified for the AcceptFuture"),
+        _ => internal_error("incorrect op type specified for the AcceptFuture"),
       };
 
       unsafe { fiona::liburing::io_uring_sqe_set_data(sqe, user_data) };
@@ -293,7 +293,7 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
     } else {
       // let addr = match &mut accept_fds.op {
       //   fiona::op::Op::Accept(ref mut s) => s.addr_in,
-      //   _ => panic!("incorrect op type specified for the AcceptFuture"),
+      //   _ => internal_error("incorrect op type specified for the AcceptFuture"),
       // };
       // println!(
       //   "accepted tcp connection on this addr: {:?}:{}",
@@ -323,7 +323,7 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
         fiona::op::Op::Connect(ref mut s) => {
           s.timer_fds = None;
         }
-        _ => panic!(""),
+        _ => internal_error(""),
       }
 
       if connect_fds.res < 0 {
@@ -351,7 +351,7 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
         std::ptr::addr_of!(s.addr_in),
         std::mem::size_of::<libc::sockaddr_in>() as u32,
       ),
-      _ => panic!(""),
+      _ => internal_error(""),
     };
 
     let user_data = self.connect_fds.clone().into_raw().cast::<libc::c_void>();
@@ -404,9 +404,9 @@ impl<'a> std::future::Future for ReadFuture<'a> {
 
       let mut buf = match read_fds.op {
         fiona::op::Op::Read(ref mut s) => s.buf.take().unwrap(),
-        _ => {
-          panic!("Read op was completed but the internal Op is an invalid type")
-        }
+        _ => internal_error(
+          "Read op was completed but the internal Op is an invalid type",
+        ),
       };
 
       unsafe { buf.set_len(buf.len() + read_fds.res as usize) };
@@ -427,9 +427,9 @@ impl<'a> std::future::Future for ReadFuture<'a> {
     let (buf, nbytes, offset) = match read_fds.op {
       fiona::op::Op::Read(ref mut s) => match s.buf {
         Some(ref mut b) => (b.as_mut_ptr(), b.capacity(), b.len()),
-        _ => panic!(""),
+        _ => internal_error(""),
       },
-      _ => panic!(""),
+      _ => internal_error(""),
     };
 
     let user_data = self.read_fds.clone().into_raw().cast::<libc::c_void>();
@@ -481,11 +481,9 @@ impl<'a> std::future::Future for WriteFuture<'a> {
 
       let buf = match fds.op {
         fiona::op::Op::Write(ref mut s) => s.buf.take().unwrap(),
-        _ => {
-          panic!(
-            "Write op was completed but the internal Op is an invalid type"
-          )
-        }
+        _ => internal_error(
+          "Write op was completed but the internal Op is an invalid type",
+        ),
       };
 
       return std::task::Poll::Ready(Ok(buf));
@@ -506,9 +504,11 @@ impl<'a> std::future::Future for WriteFuture<'a> {
     let (buf, nbytes, offset) = match fds.op {
       fiona::op::Op::Write(ref mut s) => match s.buf {
         Some(ref mut b) => (b.as_ptr(), b.len(), 0_u64),
-        _ => panic!("In WriteFuture, buf was null when it should've been Some"),
+        _ => internal_error(
+          "In WriteFuture, buf was null when it should've been Some",
+        ),
       },
-      _ => panic!("Incorrect operation type in WriteFuture"),
+      _ => internal_error("Incorrect operation type in WriteFuture"),
     };
 
     let user_data = self.write_fds.clone().into_raw().cast::<libc::c_void>();
@@ -595,4 +595,8 @@ unsafe fn drop_cancel(
       fiona::liburing::io_uring_submit(ring);
     }
   }
+}
+
+fn internal_error(msg: &'static str) -> ! {
+  panic!("{msg}");
 }
