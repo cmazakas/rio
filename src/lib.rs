@@ -17,6 +17,14 @@ extern crate libc as ext_libc;
 extern crate nix;
 
 pub use nix::errno::Errno;
+pub use rustls::Error as TLSError;
+
+#[derive(Debug)]
+pub enum Error {
+  IO(std::io::Error),
+  Errno(Errno),
+  TLS(TLSError),
+}
 
 pub mod ip;
 pub mod libc;
@@ -351,5 +359,23 @@ impl Executor {
     unsafe { liburing::io_uring_submit(ring) };
 
     state.tasks.push_back(task);
+  }
+}
+
+impl From<std::io::Error> for Error {
+  fn from(value: std::io::Error) -> Self {
+    Self::IO(value)
+  }
+}
+
+impl From<Errno> for Error {
+  fn from(value: Errno) -> Self {
+    Self::Errno(value)
+  }
+}
+
+impl From<TLSError> for Error {
+  fn from(value: TLSError) -> Self {
+    Self::TLS(value)
   }
 }
