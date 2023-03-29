@@ -381,8 +381,8 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
             self.connect_fds.clone().into_raw().cast::<libc::c_void>();
 
         unsafe {
-            fiona::liburing::io_uring_sqe_set_data(connect_sqe, user_data)
-        };
+            fiona::liburing::io_uring_sqe_set_data(connect_sqe, user_data);
+        }
         unsafe {
             fiona::liburing::io_uring_prep_connect(
                 connect_sqe,
@@ -393,8 +393,8 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
         }
 
         unsafe {
-            fiona::liburing::io_uring_sqe_set_flags(connect_sqe, 1_u32 << 2)
-        };
+            fiona::liburing::io_uring_sqe_set_flags(connect_sqe, 1_u32 << 2);
+        }
 
         let mut ts = make_kernel_timespec(self.timeout);
         let timeout_sqe = unsafe { fiona::liburing::io_uring_get_sqe(ring) };
@@ -482,8 +482,8 @@ impl<'a> std::future::Future for ReadFuture<'a> {
         }
 
         unsafe {
-            fiona::liburing::io_uring_sqe_set_flags(read_sqe, 1_u32 << 2)
-        };
+            fiona::liburing::io_uring_sqe_set_flags(read_sqe, 1_u32 << 2);
+        }
 
         let mut ts = make_kernel_timespec(self.timeout);
         let timeout_sqe = unsafe { fiona::liburing::io_uring_get_sqe(ring) };
@@ -571,8 +571,8 @@ impl<'a> std::future::Future for WriteFuture<'a> {
         }
 
         unsafe {
-            fiona::liburing::io_uring_sqe_set_flags(write_sqe, 1_u32 << 2)
-        };
+            fiona::liburing::io_uring_sqe_set_flags(write_sqe, 1_u32 << 2);
+        }
 
         let mut ts = make_kernel_timespec(self.timeout);
         let timeout_sqe = unsafe { fiona::liburing::io_uring_get_sqe(ring) };
