@@ -76,6 +76,38 @@ int rio_make_ipv4_tcp_server_socket(uint32_t ipv4_addr, uint16_t port, int *cons
   return 0;
 }
 
-struct sockaddr_in rio_sockaddr_in_test(struct sockaddr_in in) { return in; }
+int rio_make_ipv6_tcp_server_socket(struct in6_addr ipv6_addr, uint16_t port, int *const fdp)
+{
+  int fd = socket(AF_INET6, SOCK_STREAM, 0);
+  if (-1 == fd)
+  {
+    return errno;
+  }
+
+  int enable = 1;
+  if (-1 == setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)))
+  {
+    return errno;
+  }
+
+  struct sockaddr_in6 addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sin6_addr = ipv6_addr;
+  addr.sin6_port = htons(port);
+  addr.sin6_family = AF_INET6;
+
+  if (-1 == bind(fd, (struct sockaddr_in *)&addr, sizeof(addr)))
+  {
+    return errno;
+  }
+
+  if (-1 == listen(fd, 256))
+  {
+    return errno;
+  }
+
+  *fdp = fd;
+  return 0;
+}
 
 struct __kernel_timespec rio_timespec_test(struct __kernel_timespec in) { return in; }

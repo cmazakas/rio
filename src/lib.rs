@@ -1,15 +1,15 @@
 #![warn(clippy::pedantic)]
 #![allow(
-  clippy::similar_names,
-  clippy::missing_safety_doc,
-  clippy::missing_panics_doc,
-  clippy::cast_ptr_alignment,
-  clippy::module_name_repetitions,
-  clippy::missing_errors_doc,
-  clippy::match_wildcard_for_single_variants,
-  clippy::cast_possible_truncation,
-  clippy::too_many_lines,
-  clippy::cast_sign_loss
+    clippy::similar_names,
+    clippy::missing_safety_doc,
+    clippy::missing_panics_doc,
+    clippy::cast_ptr_alignment,
+    clippy::module_name_repetitions,
+    clippy::missing_errors_doc,
+    clippy::match_wildcard_for_single_variants,
+    clippy::cast_possible_truncation,
+    clippy::too_many_lines,
+    clippy::cast_sign_loss
 )]
 #![allow(non_camel_case_types)]
 
@@ -21,9 +21,9 @@ pub use rustls::Error as TLSError;
 
 #[derive(Debug)]
 pub enum Error {
-  IO(std::io::Error),
-  Errno(Errno),
-  TLS(TLSError),
+    IO(std::io::Error),
+    Errno(Errno),
+    TLS(TLSError),
 }
 
 pub mod ip;
@@ -39,16 +39,16 @@ struct NopWaker {}
 
 #[repr(transparent)]
 struct SyncUnsafeCell<T: ?Sized> {
-  value: std::cell::UnsafeCell<T>,
+    value: std::cell::UnsafeCell<T>,
 }
 
 impl<T> SyncUnsafeCell<T> {
-  #[must_use]
-  pub fn new(value: T) -> Self {
-    Self {
-      value: std::cell::UnsafeCell::new(value),
+    #[must_use]
+    pub fn new(value: T) -> Self {
+        Self {
+            value: std::cell::UnsafeCell::new(value),
+        }
     }
-  }
 }
 
 unsafe impl<T> Send for SyncUnsafeCell<T> {}
@@ -56,229 +56,229 @@ unsafe impl<T> Sync for SyncUnsafeCell<T> {}
 
 #[derive(Clone)]
 struct WritePipe {
-  fdp: std::sync::Arc<std::sync::Mutex<i32>>,
+    fdp: std::sync::Arc<std::sync::Mutex<i32>>,
 }
 
 struct PipeWaker {
-  p: WritePipe,
-  task: SyncUnsafeCell<*mut Task>,
+    p: WritePipe,
+    task: SyncUnsafeCell<*mut Task>,
 }
 
 impl std::task::Wake for PipeWaker {
-  fn wake(self: std::sync::Arc<Self>) {
-    let fd_guard = self.p.fdp.lock().unwrap();
+    fn wake(self: std::sync::Arc<Self>) {
+        let fd_guard = self.p.fdp.lock().unwrap();
 
-    unsafe {
-      let taskp = *self.task.value.get();
-      ext_libc::write(
-        *fd_guard,
-        std::ptr::addr_of!(taskp).cast::<ext_libc::c_void>(),
-        std::mem::size_of::<*mut Task>(),
-      );
+        unsafe {
+            let taskp = *self.task.value.get();
+            ext_libc::write(
+                *fd_guard,
+                std::ptr::addr_of!(taskp).cast::<ext_libc::c_void>(),
+                std::mem::size_of::<*mut Task>(),
+            );
+        }
     }
-  }
 }
 
 pub struct WakerFuture {}
 
 impl std::future::Future for WakerFuture {
-  type Output = std::task::Waker;
+    type Output = std::task::Waker;
 
-  fn poll(
-    self: std::pin::Pin<&mut Self>,
-    cx: &mut std::task::Context<'_>,
-  ) -> std::task::Poll<Self::Output> {
-    std::task::Poll::Ready(cx.waker().clone())
-  }
+    fn poll(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        std::task::Poll::Ready(cx.waker().clone())
+    }
 }
 
 struct IoContextState {
-  ring: *mut liburing::io_uring,
-  task_ctx: Option<*mut Task>,
-  tasks: std::collections::VecDeque<std::pin::Pin<Box<Task>>>,
+    ring: *mut liburing::io_uring,
+    task_ctx: Option<*mut Task>,
+    tasks: std::collections::VecDeque<std::pin::Pin<Box<Task>>>,
 }
 
 pub struct IoContext {
-  p: std::rc::Rc<std::cell::UnsafeCell<IoContextState>>,
+    p: std::rc::Rc<std::cell::UnsafeCell<IoContextState>>,
 }
 
 #[derive(Clone)]
 pub struct Executor {
-  p: std::rc::Rc<std::cell::UnsafeCell<IoContextState>>,
+    p: std::rc::Rc<std::cell::UnsafeCell<IoContextState>>,
 }
 
 impl std::task::Wake for NopWaker {
-  fn wake(self: std::sync::Arc<Self>) {}
+    fn wake(self: std::sync::Arc<Self>) {}
 }
 
 impl IoContextState {}
 
 impl Drop for IoContextState {
-  fn drop(&mut self) {
-    unsafe { liburing::teardown(self.ring) }
-  }
+    fn drop(&mut self) {
+        unsafe { liburing::teardown(self.ring) }
+    }
 }
 
 impl IoContext {
-  #[must_use]
-  pub fn new() -> Self {
-    let ring = liburing::setup(32, 0);
+    #[must_use]
+    pub fn new() -> Self {
+        let ring = liburing::setup(32, 0);
 
-    Self {
-      p: std::rc::Rc::new(std::cell::UnsafeCell::new(IoContextState {
-        ring,
-        task_ctx: None,
-        tasks: std::collections::VecDeque::default(),
-      })),
-    }
-  }
-
-  unsafe fn get_state(&self) -> *mut IoContextState {
-    (*std::rc::Rc::as_ptr(&self.p)).get()
-  }
-
-  pub fn post<F>(&mut self, task: F)
-  where
-    F: std::future::Future<Output = ()> + 'static,
-  {
-    let mut ex = self.get_executor();
-    ex.post(task);
-  }
-
-  #[must_use]
-  pub fn get_executor(&self) -> Executor {
-    Executor { p: self.p.clone() }
-  }
-
-  #[allow(clippy::too_many_lines)]
-  pub fn run(&mut self) {
-    pub struct CQESeenGuard {
-      ring: *mut liburing::io_uring,
-      cqe: *mut liburing::io_uring_cqe,
+        Self {
+            p: std::rc::Rc::new(std::cell::UnsafeCell::new(IoContextState {
+                ring,
+                task_ctx: None,
+                tasks: std::collections::VecDeque::default(),
+            })),
+        }
     }
 
-    impl Drop for CQESeenGuard {
-      fn drop(&mut self) {
-        unsafe { liburing::io_uring_cqe_seen(self.ring, self.cqe) };
-      }
+    unsafe fn get_state(&self) -> *mut IoContextState {
+        (*std::rc::Rc::as_ptr(&self.p)).get()
     }
 
-    struct PipeGuard {
-      pipefd: [i32; 2],
+    pub fn post<F>(&mut self, task: F)
+    where
+        F: std::future::Future<Output = ()> + 'static,
+    {
+        let mut ex = self.get_executor();
+        ex.post(task);
     }
 
-    impl Drop for PipeGuard {
-      fn drop(&mut self) {
-        unsafe {
-          ext_libc::close(self.pipefd[0]);
-          ext_libc::close(self.pipefd[1]);
-        };
-      }
+    #[must_use]
+    pub fn get_executor(&self) -> Executor {
+        Executor { p: self.p.clone() }
     }
 
-    struct TaskGuard<'a> {
-      tasks: &'a mut std::collections::VecDeque<std::pin::Pin<Box<Task>>>,
-    }
-
-    impl<'a> Drop for TaskGuard<'a> {
-      fn drop(&mut self) {
-        self.tasks.clear();
-      }
-    }
-
-    let mut pipefd = [-1_i32; 2];
-    assert!(
-      liburing::make_pipe(&mut pipefd) != -1,
-      "unable to establish pipe!"
-    );
-
-    let _pipe_guard = PipeGuard { pipefd };
-    let write_pipe = WritePipe {
-      fdp: std::sync::Arc::new(std::sync::Mutex::new(pipefd[1])),
-    };
-
-    let state = unsafe { &mut *self.get_state() };
-    let ring = state.ring;
-
-    let mut buf = std::mem::MaybeUninit::<*mut Task>::uninit();
-    unsafe {
-      std::ptr::write_bytes(std::ptr::addr_of_mut!(buf), 0, 1);
-    }
-
-    #[allow(clippy::cast_possible_truncation)]
-    unsafe {
-      let sqe = liburing::io_uring_get_sqe(ring);
-      liburing::io_uring_prep_read(
-        sqe,
-        pipefd[0],
-        buf.as_mut_ptr().cast::<_>(),
-        std::mem::size_of::<*mut Task>() as u32,
-        0,
-      );
-      liburing::io_uring_submit(ring);
-    };
-
-    let task_guard = TaskGuard {
-      tasks: &mut state.tasks,
-    };
-
-    while !task_guard.tasks.is_empty() {
-      let mut cqe = std::ptr::null_mut();
-      let e = unsafe { liburing::io_uring_wait_cqe(ring, &mut cqe) };
-      if e != 0 {
-        assert!(e < 0);
-        panic!("waiting internally for the cqe failed with: {:?}", -e);
-      }
-      assert!(!cqe.is_null());
-
-      let res = unsafe { (*cqe).res };
-
-      let _guard = CQESeenGuard { ring, cqe };
-      let p = unsafe { liburing::io_uring_cqe_get_data(cqe) };
-
-      let taskp: *mut Task = if p.is_null() {
-        if res != std::mem::size_of::<*mut Task>().try_into().unwrap() {
-          continue;
+    #[allow(clippy::too_many_lines)]
+    pub fn run(&mut self) {
+        pub struct CQESeenGuard {
+            ring: *mut liburing::io_uring,
+            cqe: *mut liburing::io_uring_cqe,
         }
 
-        let p = unsafe { buf.assume_init_read() };
-        assert!(!p.is_null());
+        impl Drop for CQESeenGuard {
+            fn drop(&mut self) {
+                unsafe { liburing::io_uring_cqe_seen(self.ring, self.cqe) };
+            }
+        }
+
+        struct PipeGuard {
+            pipefd: [i32; 2],
+        }
+
+        impl Drop for PipeGuard {
+            fn drop(&mut self) {
+                unsafe {
+                    ext_libc::close(self.pipefd[0]);
+                    ext_libc::close(self.pipefd[1]);
+                };
+            }
+        }
+
+        struct TaskGuard<'a> {
+            tasks: &'a mut std::collections::VecDeque<std::pin::Pin<Box<Task>>>,
+        }
+
+        impl<'a> Drop for TaskGuard<'a> {
+            fn drop(&mut self) {
+                self.tasks.clear();
+            }
+        }
+
+        let mut pipefd = [-1_i32; 2];
+        assert!(
+            liburing::make_pipe(&mut pipefd) != -1,
+            "unable to establish pipe!"
+        );
+
+        let _pipe_guard = PipeGuard { pipefd };
+        let write_pipe = WritePipe {
+            fdp: std::sync::Arc::new(std::sync::Mutex::new(pipefd[1])),
+        };
+
+        let state = unsafe { &mut *self.get_state() };
+        let ring = state.ring;
+
+        let mut buf = std::mem::MaybeUninit::<*mut Task>::uninit();
+        unsafe {
+            std::ptr::write_bytes(std::ptr::addr_of_mut!(buf), 0, 1);
+        }
 
         #[allow(clippy::cast_possible_truncation)]
         unsafe {
-          let sqe = liburing::io_uring_get_sqe(ring);
-          liburing::io_uring_prep_read(
-            sqe,
-            pipefd[0],
-            buf.as_mut_ptr().cast::<_>(),
-            std::mem::size_of::<*mut Task>() as u32,
-            0,
-          );
-          liburing::io_uring_submit(ring);
+            let sqe = liburing::io_uring_get_sqe(ring);
+            liburing::io_uring_prep_read(
+                sqe,
+                pipefd[0],
+                buf.as_mut_ptr().cast::<_>(),
+                std::mem::size_of::<*mut Task>() as u32,
+                0,
+            );
+            liburing::io_uring_submit(ring);
         };
 
-        p
-      } else {
-        let p = p.cast::<op::FdStateImpl>();
-        // println!("the following task came in: {:?}", p);
+        let task_guard = TaskGuard {
+            tasks: &mut state.tasks,
+        };
 
-        let fds = unsafe { op::FdState::from_raw(p) };
-        let p = fds.get();
+        while !task_guard.tasks.is_empty() {
+            let mut cqe = std::ptr::null_mut();
+            let e = unsafe { liburing::io_uring_wait_cqe(ring, &mut cqe) };
+            if e != 0 {
+                assert!(e < 0);
+                panic!("waiting internally for the cqe failed with: {:?}", -e);
+            }
+            assert!(!cqe.is_null());
 
-        unsafe {
-          (*p).done = true;
-          (*p).res = res;
+            let res = unsafe { (*cqe).res };
 
-          // println!("res is: {res}");
-          // if res < 0 {
-          //   println!("errno: {:?}", libc::errno(-res));
-          // }
-        }
-        unsafe { (*p).task.take().unwrap() }
-      };
+            let _guard = CQESeenGuard { ring, cqe };
+            let p = unsafe { liburing::io_uring_cqe_get_data(cqe) };
 
-      let mut it = task_guard.tasks.iter_mut();
-      let Some(idx) =  it.position(|p| {
+            let taskp: *mut Task = if p.is_null() {
+                if res != std::mem::size_of::<*mut Task>().try_into().unwrap() {
+                    continue;
+                }
+
+                let p = unsafe { buf.assume_init_read() };
+                assert!(!p.is_null());
+
+                #[allow(clippy::cast_possible_truncation)]
+                unsafe {
+                    let sqe = liburing::io_uring_get_sqe(ring);
+                    liburing::io_uring_prep_read(
+                        sqe,
+                        pipefd[0],
+                        buf.as_mut_ptr().cast::<_>(),
+                        std::mem::size_of::<*mut Task>() as u32,
+                        0,
+                    );
+                    liburing::io_uring_submit(ring);
+                };
+
+                p
+            } else {
+                let p = p.cast::<op::FdStateImpl>();
+                // println!("the following task came in: {:?}", p);
+
+                let fds = unsafe { op::FdState::from_raw(p) };
+                let p = fds.get();
+
+                unsafe {
+                    (*p).done = true;
+                    (*p).res = res;
+
+                    // println!("res is: {res}");
+                    // if res < 0 {
+                    //   println!("errno: {:?}", libc::errno(-res));
+                    // }
+                }
+                unsafe { (*p).task.take().unwrap() }
+            };
+
+            let mut it = task_guard.tasks.iter_mut();
+            let Some(idx) =  it.position(|p| {
         (std::ptr::addr_of!(**p) as *const dyn std::future::Future<Output = ()>)
           .cast::<()>()
           == taskp.cast::<()>()
@@ -286,96 +286,96 @@ impl IoContext {
         continue;
       };
 
-      state.task_ctx = Some(taskp);
+            state.task_ctx = Some(taskp);
 
-      let pipe_waker = std::sync::Arc::new(PipeWaker {
-        p: write_pipe.clone(),
-        task: SyncUnsafeCell::new(taskp),
-      })
-      .into();
+            let pipe_waker = std::sync::Arc::new(PipeWaker {
+                p: write_pipe.clone(),
+                task: SyncUnsafeCell::new(taskp),
+            })
+            .into();
 
-      let task = unsafe { std::pin::Pin::new_unchecked(&mut *taskp) };
-      let mut cx = std::task::Context::from_waker(&pipe_waker);
+            let task = unsafe { std::pin::Pin::new_unchecked(&mut *taskp) };
+            let mut cx = std::task::Context::from_waker(&pipe_waker);
 
-      if task.poll(&mut cx).is_ready() {
-        drop(task_guard.tasks.remove(idx));
-      }
+            if task.poll(&mut cx).is_ready() {
+                drop(task_guard.tasks.remove(idx));
+            }
+        }
+
+        state.task_ctx = None;
+
+        let mut cqe = std::ptr::null_mut::<liburing::io_uring_cqe>();
+        while 0 == unsafe { liburing::io_uring_peek_cqe(ring, &mut cqe) } {
+            assert!(!cqe.is_null());
+
+            // println!("leftover cqe is: {:?}", unsafe {
+            //   liburing::io_uring_cqe_get_data(cqe)
+            // });
+
+            let p = unsafe { liburing::io_uring_cqe_get_data(cqe) };
+            if !p.is_null() {
+                let p = p.cast::<op::FdStateImpl>();
+                let _fds = unsafe { op::FdState::from_raw(p) };
+            }
+            unsafe { liburing::io_uring_cqe_seen(ring, cqe) };
+        }
     }
-
-    state.task_ctx = None;
-
-    let mut cqe = std::ptr::null_mut::<liburing::io_uring_cqe>();
-    while 0 == unsafe { liburing::io_uring_peek_cqe(ring, &mut cqe) } {
-      assert!(!cqe.is_null());
-
-      // println!("leftover cqe is: {:?}", unsafe {
-      //   liburing::io_uring_cqe_get_data(cqe)
-      // });
-
-      let p = unsafe { liburing::io_uring_cqe_get_data(cqe) };
-      if !p.is_null() {
-        let p = p.cast::<op::FdStateImpl>();
-        let _fds = unsafe { op::FdState::from_raw(p) };
-      }
-      unsafe { liburing::io_uring_cqe_seen(ring, cqe) };
-    }
-  }
 }
 
 impl std::default::Default for IoContext {
-  fn default() -> Self {
-    Self::new()
-  }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Executor {
-  fn get_state(&self) -> *mut IoContextState {
-    unsafe { (*std::rc::Rc::as_ptr(&self.p)).get() }
-  }
+    fn get_state(&self) -> *mut IoContextState {
+        unsafe { (*std::rc::Rc::as_ptr(&self.p)).get() }
+    }
 
-  #[must_use]
-  pub fn get_ring(&self) -> *mut liburing::io_uring {
-    unsafe { (*self.get_state()).ring }
-  }
+    #[must_use]
+    pub fn get_ring(&self) -> *mut liburing::io_uring {
+        unsafe { (*self.get_state()).ring }
+    }
 
-  pub fn post<F>(&mut self, task: F)
-  where
-    F: std::future::Future<Output = ()> + 'static,
-  {
-    let mut task = Box::pin(task);
-    let state = unsafe { &mut *self.get_state() };
-    let taskp = unsafe { task.as_mut().get_unchecked_mut() as *mut _ };
+    pub fn post<F>(&mut self, task: F)
+    where
+        F: std::future::Future<Output = ()> + 'static,
+    {
+        let mut task = Box::pin(task);
+        let state = unsafe { &mut *self.get_state() };
+        let taskp = unsafe { task.as_mut().get_unchecked_mut() as *mut _ };
 
-    let fds = op::FdState::new(-1, op::Op::Null);
-    let p = fds.get();
-    unsafe { (*p).task = Some(taskp) };
+        let fds = op::FdState::new(-1, op::Op::Null);
+        let p = fds.get();
+        unsafe { (*p).task = Some(taskp) };
 
-    let ring = state.ring;
-    let sqe = unsafe { liburing::io_uring_get_sqe(ring) };
-    let user_data = fds.into_raw().cast::<ext_libc::c_void>();
+        let ring = state.ring;
+        let sqe = unsafe { liburing::io_uring_get_sqe(ring) };
+        let user_data = fds.into_raw().cast::<ext_libc::c_void>();
 
-    unsafe { liburing::io_uring_sqe_set_data(sqe, user_data) };
-    unsafe { liburing::io_uring_prep_nop(sqe) };
-    unsafe { liburing::io_uring_submit(ring) };
+        unsafe { liburing::io_uring_sqe_set_data(sqe, user_data) };
+        unsafe { liburing::io_uring_prep_nop(sqe) };
+        unsafe { liburing::io_uring_submit(ring) };
 
-    state.tasks.push_back(task);
-  }
+        state.tasks.push_back(task);
+    }
 }
 
 impl From<std::io::Error> for Error {
-  fn from(value: std::io::Error) -> Self {
-    Self::IO(value)
-  }
+    fn from(value: std::io::Error) -> Self {
+        Self::IO(value)
+    }
 }
 
 impl From<Errno> for Error {
-  fn from(value: Errno) -> Self {
-    Self::Errno(value)
-  }
+    fn from(value: Errno) -> Self {
+        Self::Errno(value)
+    }
 }
 
 impl From<TLSError> for Error {
-  fn from(value: TLSError) -> Self {
-    Self::TLS(value)
-  }
+    fn from(value: TLSError) -> Self {
+        Self::TLS(value)
+    }
 }
