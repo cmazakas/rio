@@ -40,7 +40,7 @@ impl Client {
   pub async fn async_connect<'a>(
     &'a mut self,
     server_name: &'a str,
-    ipv4_addr: u32,
+    ip_addr: std::net::IpAddr,
     port: u16,
     buf: Vec<u8>,
   ) -> Result<Vec<u8>, fiona::Error> {
@@ -71,7 +71,7 @@ impl Client {
     }
 
     assert!(!self.connected);
-    self.s.async_connect(ipv4_addr, port).await?;
+    self.s.async_connect(ip_addr, port).await?;
 
     self.tls_stream = Some(rustls::ClientConnection::new(
       self.client_cfg.take().unwrap(),

@@ -10,7 +10,8 @@ use std::{io::Read, sync::Arc};
 
 use fiona as fio;
 
-const LOCALHOST: u32 = 0x7f000001;
+const LOCALHOST: std::net::IpAddr =
+  std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST);
 
 static mut PORT: std::sync::atomic::AtomicU16 =
   std::sync::atomic::AtomicU16::new(4300);

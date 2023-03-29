@@ -62,15 +62,25 @@ impl Acceptor {
 
   pub fn listen(
     &mut self,
-    ipv4_addr: u32,
+    ip_addr: std::net::IpAddr,
     port: u16,
   ) -> Result<(), fiona::Errno> {
-    match fiona::liburing::make_ipv4_tcp_server_socket(ipv4_addr, port) {
-      Ok(fd) => {
-        self.fd = fd;
-        Ok(())
+    match ip_addr {
+      std::net::IpAddr::V4(ipv4_addr) => {
+        match fiona::liburing::make_ipv4_tcp_server_socket(
+          u32::from(ipv4_addr),
+          port,
+        ) {
+          Ok(fd) => {
+            self.fd = fd;
+            Ok(())
+          }
+          Err(e) => Err(unsafe { std::mem::transmute(e) }),
+        }
       }
-      Err(e) => Err(unsafe { std::mem::transmute(e) }),
+      std::net::IpAddr::V6(_ipv6_addr) => {
+        panic!("");
+      }
     }
   }
 
@@ -164,14 +174,23 @@ impl Client {
     Self { s: Socket::new(ex) }
   }
 
-  pub fn async_connect(&mut self, ipv4_addr: u32, port: u16) -> ConnectFuture {
-    let addr_in = libc::sockaddr_in {
-      sin_family: libc::AF_INET as u16,
-      sin_port: port.to_be(),
-      sin_addr: libc::in_addr {
-        s_addr: ipv4_addr.to_be(),
+  pub fn async_connect(
+    &mut self,
+    ip_addr: std::net::IpAddr,
+    port: u16,
+  ) -> ConnectFuture {
+    let addr_in = match ip_addr {
+      std::net::IpAddr::V4(ipv4_addr) => libc::sockaddr_in {
+        sin_family: libc::AF_INET as u16,
+        sin_port: port.to_be(),
+        sin_addr: libc::in_addr {
+          s_addr: u32::from(ipv4_addr).to_be(),
+        },
+        sin_zero: Default::default(),
       },
-      sin_zero: Default::default(),
+      std::net::IpAddr::V6(_ipv6_addr) => {
+        panic!("")
+      }
     };
 
     let connect_fds = fiona::op::FdState::new(

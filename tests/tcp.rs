@@ -9,7 +9,8 @@ fn get_port() -> u16 {
   unsafe { PORT.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
 }
 
-const LOCALHOST: u32 = 0x7f000001;
+const LOCALHOST: std::net::IpAddr =
+  std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST);
 
 struct NopWaker {}
 impl std::task::Wake for NopWaker {
@@ -184,7 +185,12 @@ fn connect_timeout() {
     // use one of the IP addresses from the test networks:
     // 192.0.2.0/24
     // https://en.wikipedia.org/wiki/Internet_Protocol_version_4#Special-use_addresses
-    let r = client.async_connect(0xc0000201, 3301).await;
+    let r = client
+      .async_connect(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::from([192, 0, 2, 0])),
+        3301,
+      )
+      .await;
 
     match r {
       Err(e) => match e {
