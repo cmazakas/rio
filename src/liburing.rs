@@ -67,7 +67,7 @@ extern "C" {
     pub fn io_uring_prep_accept(
         sqe: *mut io_uring_sqe,
         fd: i32,
-        addr: *mut libc::sockaddr_in,
+        addr: *mut libc::sockaddr,
         addrlen: *mut u32,
         flags: i32,
     );

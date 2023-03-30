@@ -96,7 +96,7 @@ int rio_make_ipv6_tcp_server_socket(struct in6_addr ipv6_addr, uint16_t port, in
   addr.sin6_port = htons(port);
   addr.sin6_family = AF_INET6;
 
-  if (-1 == bind(fd, (struct sockaddr_in *)&addr, sizeof(addr)))
+  if (-1 == bind(fd, (struct sockaddr *)&addr, sizeof(addr)))
   {
     return errno;
   }

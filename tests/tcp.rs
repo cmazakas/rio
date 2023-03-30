@@ -12,6 +12,9 @@ fn get_port() -> u16 {
 const LOCALHOST: std::net::IpAddr =
     std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST);
 
+const LOCALHOST_IPV6: std::net::IpAddr =
+    std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST);
+
 struct NopWaker {}
 impl std::task::Wake for NopWaker {
     fn wake(self: std::sync::Arc<Self>) {}
@@ -325,4 +328,51 @@ fn cancel_accept() {
 
     ioc.run();
     assert_eq!(unsafe { NUM_RUNS }, 1);
+}
+
+#[test]
+#[ignore]
+#[should_panic]
+fn tcp_acceptor_ipv6() {
+    static mut NUM_RUNS: i32 = 0;
+
+    let port = get_port();
+
+    async fn server(ex: fiona::Executor, port: u16) {
+        let mut acceptor = fiona::ip::tcp::Acceptor::new(&ex);
+        acceptor.listen(LOCALHOST_IPV6, port).unwrap();
+        let mut stream = acceptor.async_accept().await.unwrap();
+
+        let mut buf = vec![0_u8; 4096];
+        unsafe {
+            buf.set_len(0);
+        }
+
+        let buf = stream.async_read(buf).await.unwrap();
+
+        assert_eq!(buf.len(), 13);
+        let str = unsafe { std::str::from_utf8_unchecked(&buf[0..buf.len()]) };
+        assert_eq!(str, "Hello, world!");
+
+        unsafe { NUM_RUNS += 1 };
+    }
+
+    async fn client(ex: fiona::Executor, port: u16) {
+        let mut client = fiona::ip::tcp::Client::new(&ex);
+        client.async_connect(LOCALHOST_IPV6, port).await.unwrap();
+
+        let str = String::from("Hello, world!").into_bytes();
+        client.async_write(str).await.unwrap();
+
+        unsafe { NUM_RUNS += 1 };
+    }
+
+    let mut ioc = fiona::IoContext::new();
+    let ex = ioc.get_executor();
+
+    ioc.post(server(ex.clone(), port));
+    ioc.post(client(ex, port));
+    ioc.run();
+
+    assert_eq!(unsafe { NUM_RUNS }, 2);
 }

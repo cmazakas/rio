@@ -79,25 +79,31 @@ impl Acceptor {
                 }
             }
             std::net::IpAddr::V6(_ipv6_addr) => {
-                panic!("");
+                unimplemented!();
+                // let addr = libc::in6_addr {
+                //     s6_addr: ipv6_addr.octets(),
+                // };
+
+                // match fiona::liburing::make_ipv6_tcp_server_socket(addr, port) {
+                //     Ok(fd) => {
+                //         self.fd = fd;
+                //         Ok(())
+                //     }
+                //     Err(e) => Err(unsafe { std::mem::transmute(e) }),
+                // }
             }
         }
     }
 
     pub fn async_accept(&mut self) -> AcceptFuture {
         assert!(self.fd > 0);
-        let addr_in = libc::sockaddr_in {
-            sin_family: 0,
-            sin_addr: libc::in_addr { s_addr: 0 },
-            sin_port: 0,
-            sin_zero: Default::default(),
-        };
+        let addr_in: libc::sockaddr_storage = unsafe { std::mem::zeroed() };
 
         let fds = fiona::op::FdState::new(
             self.fd,
             fiona::op::Op::Accept(fiona::op::AcceptState {
                 addr_in,
-                addr_len: std::mem::size_of::<libc::sockaddr_in>() as u32,
+                addr_len: std::mem::size_of::<libc::sockaddr_storage>() as u32,
             }),
         );
 
@@ -179,24 +185,58 @@ impl Client {
         ip_addr: std::net::IpAddr,
         port: u16,
     ) -> ConnectFuture {
-        let addr_in = match ip_addr {
-            std::net::IpAddr::V4(ipv4_addr) => libc::sockaddr_in {
-                sin_family: libc::AF_INET as u16,
-                sin_port: port.to_be(),
-                sin_addr: libc::in_addr {
-                    s_addr: u32::from(ipv4_addr).to_be(),
-                },
-                sin_zero: Default::default(),
-            },
+        let mut addr_storage: libc::sockaddr_storage =
+            unsafe { std::mem::zeroed() };
+
+        match ip_addr {
+            std::net::IpAddr::V4(ipv4_addr) => {
+                addr_storage.ss_family = libc::AF_INET as u16;
+
+                let ipv4_addr = libc::sockaddr_in {
+                    sin_family: libc::AF_INET as u16,
+                    sin_port: port.to_be(),
+                    sin_addr: libc::in_addr {
+                        s_addr: u32::from(ipv4_addr).to_be(),
+                    },
+                    sin_zero: Default::default(),
+                };
+
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        std::ptr::addr_of!(ipv4_addr).cast::<u8>(),
+                        std::ptr::addr_of_mut!(addr_storage).cast::<u8>(),
+                        std::mem::size_of::<libc::sockaddr_in>(),
+                    );
+                }
+            }
             std::net::IpAddr::V6(_ipv6_addr) => {
-                panic!("")
+                unimplemented!();
+                // addr_storage.ss_family = libc::AF_INET6 as u16;
+
+                // let ipv6_addr = libc::sockaddr_in6 {
+                //     sin6_family: libc::AF_INET6 as u16,
+                //     sin6_port: port,
+                //     sin6_flowinfo: 0,
+                //     sin6_scope_id: 0,
+                //     sin6_addr: libc::in6_addr {
+                //         s6_addr: ipv6_addr.octets(),
+                //     },
+                // };
+
+                // unsafe {
+                //     std::ptr::copy_nonoverlapping(
+                //         std::ptr::addr_of!(ipv6_addr).cast::<u8>(),
+                //         std::ptr::addr_of_mut!(addr_storage).cast::<u8>(),
+                //         std::mem::size_of::<libc::sockaddr_in6>(),
+                //     );
+                // }
             }
         };
 
         let connect_fds = fiona::op::FdState::new(
             self.fd(),
             fiona::op::Op::Connect(fiona::op::ConnectState {
-                addr_in,
+                addr_storage,
                 timer_fds: None,
             }),
         );
@@ -299,7 +339,11 @@ impl<'a> std::future::Future for AcceptFuture<'a> {
             unsafe { fiona::liburing::io_uring_sqe_set_data(sqe, user_data) };
             unsafe {
                 fiona::liburing::io_uring_prep_accept(
-                    sqe, fd, addr, addrlen, 0,
+                    sqe,
+                    fd,
+                    addr.cast::<libc::sockaddr>(),
+                    addrlen,
+                    0,
                 );
             }
             unsafe { fiona::liburing::io_uring_submit(ring) };
@@ -371,7 +415,7 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
 
         let (addr, addrlen) = match connect_fds.op {
             fiona::op::Op::Connect(ref s) => (
-                std::ptr::addr_of!(s.addr_in),
+                std::ptr::addr_of!(s.addr_storage),
                 std::mem::size_of::<libc::sockaddr_in>() as u32,
             ),
             _ => internal_error(""),

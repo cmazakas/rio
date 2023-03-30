@@ -38,12 +38,12 @@ pub struct TimeoutState {
 
 #[derive(Clone)]
 pub struct AcceptState {
-    pub addr_in: libc::sockaddr_in,
+    pub addr_in: libc::sockaddr_storage,
     pub addr_len: u32,
 }
 
 pub struct ConnectState {
-    pub addr_in: libc::sockaddr_in,
+    pub addr_storage: libc::sockaddr_storage,
     pub timer_fds: Option<FdState>,
 }
 
