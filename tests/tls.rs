@@ -562,3 +562,100 @@ fn test_async_handshake() {
 
     assert_eq!(unsafe { NUM_RUNS }, 2);
 }
+
+#[test]
+fn getaddrinfo_test() {
+    let hostname = "www.google.com";
+
+    let node = std::ffi::CString::new(hostname).unwrap();
+    let service = std::ffi::CString::new("https").unwrap();
+
+    let mut hints = unsafe { std::mem::zeroed::<libc::addrinfo>() };
+    hints.ai_family = libc::AF_UNSPEC;
+    hints.ai_socktype = libc::SOCK_STREAM;
+    hints.ai_protocol = libc::IPPROTO_TCP;
+    hints.ai_flags = 0;
+
+    let mut res = std::ptr::null_mut::<libc::addrinfo>();
+
+    let r = unsafe {
+        libc::getaddrinfo(node.as_ptr(), service.as_ptr(), &hints, &mut res)
+    };
+
+    assert_eq!(r, 0);
+
+    while !res.is_null() {
+        let addrinfo = unsafe { &mut *res };
+        if addrinfo.ai_family == libc::AF_INET {
+            println!("found an ipv4 address");
+
+            let mut addr_in =
+                unsafe { std::mem::zeroed::<libc::sockaddr_in>() };
+
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    addrinfo.ai_addr as *const _ as *const libc::sockaddr_in,
+                    &mut addr_in,
+                    1,
+                )
+            };
+
+            let ipv4 =
+                std::net::Ipv4Addr::from(addr_in.sin_addr.s_addr.to_be());
+            let port = addr_in.sin_port.to_be();
+            println!("ipv4 address is: {ipv4:?}:{port}");
+
+            let mut ioc = fiona::IoContext::new();
+            let ex = ioc.get_executor();
+
+            ioc.post(async move {
+                let mut buf = vec![0_u8; 4096];
+
+                let client_cfg = std::sync::Arc::new(make_tls_client_cfg());
+                let mut client =
+                    fio::ip::tcp::tls::Client::new(&ex, client_cfg);
+
+                buf = client
+                    .async_connect(
+                        hostname,
+                        std::net::IpAddr::V4(ipv4),
+                        port.to_le(),
+                        buf,
+                    )
+                    .await
+                    .unwrap();
+                println!("successfully connected to the remote peer!");
+
+                buf.clear();
+
+                // client.async_shutdown(buf).await.unwrap();
+                // println!("successfully closed TLS connection");
+            });
+            ioc.run();
+        }
+
+        if addrinfo.ai_family == libc::AF_INET6 {
+            println!("found an ipv6 address");
+
+            let mut addr_in6 =
+                unsafe { std::mem::zeroed::<libc::sockaddr_in6>() };
+
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    addrinfo.ai_addr as *const _ as *const libc::sockaddr_in6,
+                    &mut addr_in6,
+                    1,
+                )
+            };
+
+            let ipv6_addr =
+                std::net::Ipv6Addr::from(addr_in6.sin6_addr.s6_addr);
+            println!("ipv6 address is: {ipv6_addr:?}");
+        }
+        res = addrinfo.ai_next;
+    }
+
+    unsafe {
+        libc::freeaddrinfo(res);
+    }
+}
