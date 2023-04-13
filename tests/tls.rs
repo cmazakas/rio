@@ -609,11 +609,13 @@ fn getaddrinfo_test() {
             let ex = ioc.get_executor();
 
             ioc.post(async move {
-                let mut buf = vec![0_u8; 4096];
+                let mut buf = vec![0_u8; 4 * 1024];
 
                 let client_cfg = std::sync::Arc::new(make_tls_client_cfg());
                 let mut client =
                     fio::ip::tcp::tls::Client::new(&ex, client_cfg);
+
+                client.timeout(std::time::Duration::from_secs(2));
 
                 buf = client
                     .async_connect(
@@ -627,6 +629,20 @@ fn getaddrinfo_test() {
                 println!("successfully connected to the remote peer!");
 
                 buf.clear();
+                buf.extend_from_slice(
+                    b"GET / HTTP/1.1\r\nConnection: close\r\n\r\n",
+                );
+                buf = client.async_write(buf).await.unwrap();
+
+                loop {
+                    buf.clear();
+                    buf = client.async_read(buf).await.unwrap();
+                    let str = std::str::from_utf8(&buf).unwrap();
+                    println!("{str}");
+                    if buf.is_empty() {
+                        break;
+                    }
+                }
 
                 // client.async_shutdown(buf).await.unwrap();
                 // println!("successfully closed TLS connection");
