@@ -37,6 +37,10 @@ impl Client {
         }
     }
 
+    pub fn timeout(&mut self, d: std::time::Duration) {
+        self.s.timeout = d;
+    }
+
     pub async fn async_connect<'a>(
         &'a mut self,
         server_name: &'a str,
@@ -63,7 +67,7 @@ impl Client {
                     tls_stream.process_new_packets()?;
                 }
             }
-
+            println!("almost done with handshake...");
             buf = send_full_tls(s, tls_stream, buf).await?;
             assert!(!tls_stream.is_handshaking());
 
@@ -304,6 +308,9 @@ async fn async_read_impl<Data>(
         while info.plaintext_bytes_to_read() == 0 && !info.peer_has_closed() {
             buf.clear();
             buf = s.async_read(buf).await?;
+            if buf.is_empty() {
+                return Ok(buf);
+            }
             tls.read_tls(&mut &buf[..])?;
             info = tls.process_new_packets()?;
         }
