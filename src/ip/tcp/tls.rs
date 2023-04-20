@@ -123,6 +123,9 @@ impl Client {
         while tls.wants_read() {
             buf.clear();
             buf = self.s.async_read(buf).await?;
+            if buf.is_empty() {
+                break;
+            }
 
             tls.read_tls(&mut &buf[..])?;
             let info = tls.process_new_packets()?;
