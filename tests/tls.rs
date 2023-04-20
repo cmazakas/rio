@@ -636,7 +636,15 @@ fn getaddrinfo_test() {
 
                 loop {
                     buf.clear();
-                    buf = client.async_read(buf).await.unwrap();
+                    match client.async_read(buf).await {
+                        Ok(b) => buf = b,
+                        Err(fiona::Error::Errno(fiona::Errno::ECANCELED)) => {
+                            buf = Vec::with_capacity(4 * 1024);
+                            break;
+                        }
+                        Err(e) => panic!("{:?}", e),
+                    }
+
                     let str = std::str::from_utf8(&buf).unwrap();
                     println!("{str}");
                     if buf.is_empty() {
