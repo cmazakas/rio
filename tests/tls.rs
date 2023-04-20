@@ -584,6 +584,8 @@ fn getaddrinfo_test() {
 
     assert_eq!(r, 0);
 
+    let head = res;
+
     while !res.is_null() {
         let addrinfo = unsafe { &mut *res };
         if addrinfo.ai_family == libc::AF_INET {
@@ -680,6 +682,6 @@ fn getaddrinfo_test() {
     }
 
     unsafe {
-        libc::freeaddrinfo(res);
+        libc::freeaddrinfo(head);
     }
 }
