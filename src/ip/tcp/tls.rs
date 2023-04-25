@@ -120,7 +120,7 @@ impl Client {
 
         buf = self.s.async_write(buf).await?;
 
-        while tls.wants_read() {
+        loop {
             buf.clear();
             buf = self.s.async_read(buf).await?;
             if buf.is_empty() {
@@ -129,7 +129,10 @@ impl Client {
 
             tls.read_tls(&mut &buf[..])?;
             let info = tls.process_new_packets()?;
-            assert!(tls.wants_read() || info.peer_has_closed());
+
+            if info.peer_has_closed() {
+                break;
+            }
         }
 
         Ok(buf)
