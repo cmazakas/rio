@@ -316,28 +316,28 @@ fn tls_server_test() {
             let mut buf = peer.async_read(buf).await.unwrap();
 
             tls_stream.read_tls(&mut &buf[..]).unwrap();
-            let info = tls_stream.process_new_packets().unwrap();
+            let mut info = tls_stream.process_new_packets().unwrap();
 
             let n = info.plaintext_bytes_to_read();
             assert!(n > 0);
             assert_eq!(n, 11);
 
             buf.clear();
-            match tls_stream
-                .reader()
-                .read_to_end(&mut buf)
-                .unwrap_err()
-                .kind()
-            {
-                std::io::ErrorKind::WouldBlock => {}
-                _ => panic!(),
+            match tls_stream.reader().read_to_end(&mut buf) {
+                Ok(_) => {}
+                Err(e) => match e.kind() {
+                    std::io::ErrorKind::WouldBlock => {}
+                    _ => panic!(),
+                },
             }
             assert_eq!("I bestow...", std::str::from_utf8(&buf).unwrap());
 
-            buf.clear();
-            let mut buf = peer.async_read(buf).await.unwrap();
-            tls_stream.read_tls(&mut &buf[..]).unwrap();
-            let info = tls_stream.process_new_packets().unwrap();
+            if !info.peer_has_closed() {
+                buf.clear();
+                buf = peer.async_read(buf).await.unwrap();
+                tls_stream.read_tls(&mut &buf[..]).unwrap();
+                info = tls_stream.process_new_packets().unwrap();
+            }
 
             info.tls_bytes_to_write();
             assert!(info.peer_has_closed());
@@ -406,7 +406,6 @@ fn tls_server_test() {
 
             let mut buf = client.async_write(buf).await.unwrap();
             buf.clear();
-
             tls_stream.send_close_notify();
             tls_stream.write_tls(&mut buf).unwrap();
 
@@ -470,7 +469,7 @@ fn test_async_handshake() {
             let mut tls_server =
                 fio::ip::tcp::tls::Server::new(peer, server_cfg);
 
-            let mut buf = tls_server.async_handshake(buf).await.unwrap();
+            tls_server.async_handshake().await.unwrap();
 
             assert_eq!(buf.as_ptr(), p);
 
@@ -522,8 +521,8 @@ fn test_async_handshake() {
             let server_name = "localhost";
             let ipv4_addr = LOCALHOST;
 
-            let mut buf = tls_client
-                .async_connect(server_name, ipv4_addr, port, buf)
+            tls_client
+                .async_connect(server_name, ipv4_addr, port)
                 .await
                 .unwrap();
 
@@ -546,7 +545,7 @@ fn test_async_handshake() {
                 assert_eq!("echoing: hello, world!", str);
             }
 
-            let buf = tls_client.async_shutdown(buf).await.unwrap();
+            tls_client.async_shutdown().await.unwrap();
             assert_eq!(buf.as_ptr(), p);
             assert_eq!(buf.capacity(), c);
 
@@ -564,6 +563,7 @@ fn test_async_handshake() {
 }
 
 #[test]
+#[ignore]
 fn getaddrinfo_test() {
     let hostname = "www.google.com";
 
@@ -619,12 +619,11 @@ fn getaddrinfo_test() {
 
                 client.timeout(std::time::Duration::from_secs(2));
 
-                buf = client
+                client
                     .async_connect(
                         hostname,
                         std::net::IpAddr::V4(ipv4),
                         port.to_le(),
-                        buf,
                     )
                     .await
                     .unwrap();

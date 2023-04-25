@@ -9,12 +9,14 @@ pub struct Client {
     connected: bool,
     tls_stream: Option<rustls::ClientConnection>,
     client_cfg: Option<std::sync::Arc<rustls::ClientConfig>>,
+    buf: Vec<u8>,
 }
 
 pub struct Server {
     s: fiona::ip::tcp::Server,
     tls_stream: Option<rustls::ServerConnection>,
     server_cfg: Option<std::sync::Arc<rustls::ServerConfig>>,
+    buf: Vec<u8>,
 }
 
 macro_rules! tls_stream {
@@ -29,11 +31,17 @@ impl Client {
         ex: &fiona::Executor,
         client_cfg: std::sync::Arc<rustls::ClientConfig>,
     ) -> Self {
+        let buf = vec![
+                0_u8;
+                rustls::internal::msgs::message::OpaqueMessage::MAX_WIRE_SIZE
+            ];
+
         Self {
             s: fiona::ip::tcp::Client::new(ex),
             client_cfg: Some(client_cfg),
             connected: false,
             tls_stream: None,
+            buf,
         }
     }
 
@@ -46,8 +54,7 @@ impl Client {
         server_name: &'a str,
         ip_addr: std::net::IpAddr,
         port: u16,
-        buf: Vec<u8>,
-    ) -> Result<Vec<u8>, fiona::Error> {
+    ) -> Result<(), fiona::Error> {
         async fn async_client_handshake_impl(
             s: &mut fiona::ip::tcp::Socket,
             tls_stream: &mut rustls::ClientConnection,
@@ -67,7 +74,6 @@ impl Client {
                     tls_stream.process_new_packets()?;
                 }
             }
-            println!("almost done with handshake...");
             buf = send_full_tls(s, tls_stream, buf).await?;
             assert!(!tls_stream.is_handshaking());
 
@@ -82,13 +88,16 @@ impl Client {
             rustls::ServerName::try_from(server_name).unwrap(),
         )?);
 
-        let buf =
-            async_client_handshake_impl(&mut self.s, tls_stream!(self), buf)
-                .await?;
+        let mut buf = Vec::new();
+        std::mem::swap(&mut self.buf, &mut buf);
+
+        buf = async_client_handshake_impl(&mut self.s, tls_stream!(self), buf)
+            .await?;
 
         self.connected = true;
+        std::mem::swap(&mut self.buf, &mut buf);
 
-        Ok(buf)
+        Ok(())
     }
 
     pub async fn async_read(
@@ -107,13 +116,13 @@ impl Client {
         async_write_impl(&mut self.s, tls, buf).await
     }
 
-    pub async fn async_shutdown(
-        &mut self,
-        mut buf: Vec<u8>,
-    ) -> Result<Vec<u8>, fiona::Error> {
+    pub async fn async_shutdown(&mut self) -> Result<(), fiona::Error> {
         let tls = tls_stream!(self);
 
         tls.send_close_notify();
+
+        let mut buf = Vec::new();
+        std::mem::swap(&mut self.buf, &mut buf);
 
         buf.clear();
         tls.write_tls(&mut buf)?;
@@ -135,7 +144,9 @@ impl Client {
             }
         }
 
-        Ok(buf)
+        std::mem::swap(&mut self.buf, &mut buf);
+
+        Ok(())
     }
 }
 
@@ -149,17 +160,20 @@ impl Server {
         s: fiona::ip::tcp::Server,
         server_cfg: std::sync::Arc<rustls::ServerConfig>,
     ) -> Self {
+        let buf = vec![
+                0_u8;
+                rustls::internal::msgs::message::OpaqueMessage::MAX_WIRE_SIZE
+            ];
+
         Self {
             s,
             server_cfg: Some(server_cfg),
             tls_stream: None,
+            buf,
         }
     }
 
-    pub async fn async_handshake(
-        &mut self,
-        buf: Vec<u8>,
-    ) -> Result<Vec<u8>, fiona::Error> {
+    pub async fn async_handshake(&mut self) -> Result<(), fiona::Error> {
         async fn async_server_handshake_impl(
             s: &mut fiona::ip::tcp::Socket,
             tls_stream: &mut rustls::ServerConnection,
@@ -189,11 +203,15 @@ impl Server {
             self.server_cfg.take().unwrap(),
         )?);
 
-        let buf =
-            async_server_handshake_impl(&mut self.s, tls_stream!(self), buf)
-                .await?;
+        let mut buf = Vec::new();
+        std::mem::swap(&mut self.buf, &mut buf);
 
-        Ok(buf)
+        buf = async_server_handshake_impl(&mut self.s, tls_stream!(self), buf)
+            .await?;
+
+        std::mem::swap(&mut self.buf, &mut buf);
+
+        Ok(())
     }
 
     pub async fn async_read(
