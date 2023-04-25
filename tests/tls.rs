@@ -641,7 +641,8 @@ fn getaddrinfo_test() {
                     match client.async_read(buf).await {
                         Ok(b) => buf = b,
                         Err(fiona::Error::Errno(fiona::Errno::ECANCELED)) => {
-                            buf = Vec::with_capacity(4 * 1024);
+                            buf = vec![0_u8; 4 * 1024];
+                            buf.clear();
                             break;
                         }
                         Err(e) => panic!("{:?}", e),
