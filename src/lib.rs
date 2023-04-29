@@ -84,10 +84,7 @@ pub struct WakerFuture {}
 impl std::future::Future for WakerFuture {
     type Output = std::task::Waker;
 
-    fn poll(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Self::Output> {
+    fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
         std::task::Poll::Ready(cx.waker().clone())
     }
 }
@@ -187,10 +184,7 @@ impl IoContext {
         }
 
         let mut pipefd = [-1_i32; 2];
-        assert!(
-            liburing::make_pipe(&mut pipefd) != -1,
-            "unable to establish pipe!"
-        );
+        assert!(liburing::make_pipe(&mut pipefd) != -1, "unable to establish pipe!");
 
         let _pipe_guard = PipeGuard { pipefd };
         let write_pipe = WritePipe {

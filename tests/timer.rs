@@ -108,18 +108,9 @@ fn timer_multiple_concurrent_manually_polled() {
 
         let waker = std::sync::Arc::new(NopWaker {}).into();
         let mut cx = std::task::Context::from_waker(&waker);
-        assert!(
-            unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }
-                .is_pending()
-        );
-        assert!(
-            unsafe { std::pin::Pin::new_unchecked(&mut f2).poll(&mut cx) }
-                .is_pending()
-        );
-        assert!(
-            unsafe { std::pin::Pin::new_unchecked(&mut f3).poll(&mut cx) }
-                .is_pending()
-        );
+        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }.is_pending());
+        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f2).poll(&mut cx) }.is_pending());
+        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f3).poll(&mut cx) }.is_pending());
 
         f2.await.unwrap();
         f3.await.unwrap();
@@ -200,8 +191,8 @@ fn verify_duration() {
 #[test]
 fn drop_future_initiated() {
     /**
-     * Test that dropping a future and then creating a new I/O object (likely
-     * reusing the same FD) is harmless.
+     * Test that dropping a future and then creating a new I/O object
+     * (likely reusing the same FD) is harmless.
      */
     struct NopWaker {}
     impl std::task::Wake for NopWaker {
@@ -221,10 +212,7 @@ fn drop_future_initiated() {
         let waker = std::sync::Arc::new(NopWaker {}).into();
         let mut cx = std::task::Context::from_waker(&waker);
 
-        assert!(
-            unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }
-                .is_pending()
-        );
+        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }.is_pending());
         std::mem::drop(f);
 
         let mut timer2 = fiona::time::Timer::new(&ex);
@@ -245,11 +233,12 @@ fn drop_future_initiated() {
 #[test]
 fn drop_timer_initiated() {
     /**
-     * We want to test the case of scheduling 1 I/O op and then reuse that FD to
-     * schedule another I/O op, using the same parent task.
-     * Ideally we'd also get this test working in the case of 2 separate tasks so
-     * we test when 2 CQEs come in that have the same FD but different associated
-     * tasks to resume but this is largely good enough.
+     * We want to test the case of scheduling 1 I/O op and then reuse that
+     * FD to schedule another I/O op, using the same parent task.
+     * Ideally we'd also get this test working in the case of 2 separate
+     * tasks so we test when 2 CQEs come in that have the same FD but
+     * different associated tasks to resume but this is largely good
+     * enough.
      */
     struct NopWaker {}
     impl std::task::Wake for NopWaker {
@@ -269,10 +258,7 @@ fn drop_timer_initiated() {
         let waker = std::sync::Arc::new(NopWaker {}).into();
         let mut cx = std::task::Context::from_waker(&waker);
 
-        assert!(
-            unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }
-                .is_pending()
-        );
+        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }.is_pending());
 
         // by dropping and then creating a new timer object, we guarantee the FD
         // is reused
@@ -298,8 +284,9 @@ fn drop_timer_initiated() {
 #[test]
 fn drop_timer_finish_early() {
     /**
-     * We want to test the case where a CQE comes in but the task associated it
-     * with it has already complete, meaning that it's no longer in the task list
+     * We want to test the case where a CQE comes in but the task associated
+     * it with it has already complete, meaning that it's no longer in
+     * the task list
      */
     struct NopWaker {}
     impl std::task::Wake for NopWaker {
@@ -320,10 +307,7 @@ fn drop_timer_finish_early() {
             let waker = std::sync::Arc::new(NopWaker {}).into();
             let mut cx = std::task::Context::from_waker(&waker);
 
-            assert!(unsafe {
-                std::pin::Pin::new_unchecked(&mut f).poll(&mut cx)
-            }
-            .is_pending());
+            assert!(unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }.is_pending());
 
             unsafe {
                 NUM_RUNS += 1;
@@ -351,8 +335,8 @@ fn drop_timer_finish_early() {
 #[test]
 fn double_wait() {
     /**
-     * Want to test that our time structure is stable when we poll a future, drop
-     * it and then start up another async read on the timer's fd
+     * Want to test that our time structure is stable when we poll a future,
+     * drop it and then start up another async read on the timer's fd
      */
     struct NopWaker {}
     impl std::task::Wake for NopWaker {
@@ -372,10 +356,7 @@ fn double_wait() {
         let waker = std::sync::Arc::new(NopWaker {}).into();
         let mut cx = std::task::Context::from_waker(&waker);
 
-        assert!(
-            unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }
-                .is_pending()
-        );
+        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }.is_pending());
 
         std::mem::drop(f);
 
@@ -435,9 +416,7 @@ fn nested_future() {
             let t = std::time::Instant::now();
             timer.expires_after(dur);
             timer.async_wait().await.unwrap();
-            assert!(
-                std::time::Instant::now().duration_since(t).as_millis() >= 500
-            );
+            assert!(std::time::Instant::now().duration_since(t).as_millis() >= 500);
             unsafe { WAS_RUN = true };
         };
 
@@ -471,9 +450,7 @@ fn cancellation() {
         });
 
         let result = f.await;
-        match result
-            .expect_err("Operation didn't report cancellation properly!")
-        {
+        match result.expect_err("Operation didn't report cancellation properly!") {
             libc::ECANCELED => {}
             _ => panic!("Incorrect error type returned, should be ECANCELED"),
         }

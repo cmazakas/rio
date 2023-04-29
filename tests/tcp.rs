@@ -2,18 +2,15 @@ extern crate fiona;
 
 use std::future::Future;
 
-static mut PORT: std::sync::atomic::AtomicU16 =
-    std::sync::atomic::AtomicU16::new(3300);
+static mut PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(3300);
 
 fn get_port() -> u16 {
     unsafe { PORT.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
 }
 
-const LOCALHOST: std::net::IpAddr =
-    std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST);
+const LOCALHOST: std::net::IpAddr = std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST);
 
-const LOCALHOST_IPV6: std::net::IpAddr =
-    std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST);
+const LOCALHOST_IPV6: std::net::IpAddr = std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST);
 
 struct NopWaker {}
 impl std::task::Wake for NopWaker {
@@ -102,9 +99,7 @@ fn multi_accept() {
                 let buf = stream.async_read(buf).await.unwrap();
 
                 assert_eq!(buf.len(), 13);
-                let str = unsafe {
-                    std::str::from_utf8_unchecked(&buf[0..buf.len()])
-                };
+                let str = unsafe { std::str::from_utf8_unchecked(&buf[0..buf.len()]) };
                 assert_eq!(str, "Hello, world!");
             });
 
@@ -191,10 +186,7 @@ fn connect_timeout() {
         // 192.0.2.0/24
         // https://en.wikipedia.org/wiki/Internet_Protocol_version_4#Special-use_addresses
         let r = client
-            .async_connect(
-                std::net::IpAddr::V4(std::net::Ipv4Addr::from([192, 0, 2, 0])),
-                3301,
-            )
+            .async_connect(std::net::IpAddr::V4(std::net::Ipv4Addr::from([192, 0, 2, 0])), 3301)
             .await;
 
         match r {
@@ -270,10 +262,7 @@ fn drop_accept_pending() {
         let waker = std::sync::Arc::new(NopWaker {}).into();
         let mut cx = std::task::Context::from_waker(&waker);
 
-        assert!(
-            unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }
-                .is_pending()
-        );
+        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }.is_pending());
 
         let mut timer = fiona::time::Timer::new(&ex);
         timer.expires_after(std::time::Duration::from_millis(500));

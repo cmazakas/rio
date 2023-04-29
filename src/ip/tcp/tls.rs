@@ -27,14 +27,8 @@ macro_rules! tls_stream {
 
 impl Client {
     #[must_use]
-    pub fn new(
-        ex: &fiona::Executor,
-        client_cfg: std::sync::Arc<rustls::ClientConfig>,
-    ) -> Self {
-        let buf = vec![
-                0_u8;
-                rustls::internal::msgs::message::OpaqueMessage::MAX_WIRE_SIZE
-            ];
+    pub fn new(ex: &fiona::Executor, client_cfg: std::sync::Arc<rustls::ClientConfig>) -> Self {
+        let buf = vec![0_u8; rustls::internal::msgs::message::OpaqueMessage::MAX_WIRE_SIZE];
 
         Self {
             s: fiona::ip::tcp::Client::new(ex),
@@ -91,8 +85,7 @@ impl Client {
         let mut buf = Vec::new();
         std::mem::swap(&mut self.buf, &mut buf);
 
-        buf = async_client_handshake_impl(&mut self.s, tls_stream!(self), buf)
-            .await?;
+        buf = async_client_handshake_impl(&mut self.s, tls_stream!(self), buf).await?;
 
         self.connected = true;
         std::mem::swap(&mut self.buf, &mut buf);
@@ -100,18 +93,12 @@ impl Client {
         Ok(())
     }
 
-    pub async fn async_read(
-        &mut self,
-        buf: Vec<u8>,
-    ) -> Result<Vec<u8>, fiona::Error> {
+    pub async fn async_read(&mut self, buf: Vec<u8>) -> Result<Vec<u8>, fiona::Error> {
         assert!(self.connected);
         async_read_impl(&mut self.s, tls_stream!(self), buf).await
     }
 
-    pub async fn async_write(
-        &mut self,
-        buf: Vec<u8>,
-    ) -> Result<Vec<u8>, fiona::Error> {
+    pub async fn async_write(&mut self, buf: Vec<u8>) -> Result<Vec<u8>, fiona::Error> {
         let tls = tls_stream!(self);
         async_write_impl(&mut self.s, tls, buf).await
     }
@@ -156,14 +143,8 @@ impl Server {
     }
 
     #[must_use]
-    pub fn new(
-        s: fiona::ip::tcp::Server,
-        server_cfg: std::sync::Arc<rustls::ServerConfig>,
-    ) -> Self {
-        let buf = vec![
-                0_u8;
-                rustls::internal::msgs::message::OpaqueMessage::MAX_WIRE_SIZE
-            ];
+    pub fn new(s: fiona::ip::tcp::Server, server_cfg: std::sync::Arc<rustls::ServerConfig>) -> Self {
+        let buf = vec![0_u8; rustls::internal::msgs::message::OpaqueMessage::MAX_WIRE_SIZE];
 
         Self {
             s,
@@ -199,34 +180,25 @@ impl Server {
             Ok(buf)
         }
 
-        self.tls_stream = Some(rustls::ServerConnection::new(
-            self.server_cfg.take().unwrap(),
-        )?);
+        self.tls_stream = Some(rustls::ServerConnection::new(self.server_cfg.take().unwrap())?);
 
         let mut buf = Vec::new();
         std::mem::swap(&mut self.buf, &mut buf);
 
-        buf = async_server_handshake_impl(&mut self.s, tls_stream!(self), buf)
-            .await?;
+        buf = async_server_handshake_impl(&mut self.s, tls_stream!(self), buf).await?;
 
         std::mem::swap(&mut self.buf, &mut buf);
 
         Ok(())
     }
 
-    pub async fn async_read(
-        &mut self,
-        buf: Vec<u8>,
-    ) -> Result<Vec<u8>, fiona::Error> {
+    pub async fn async_read(&mut self, buf: Vec<u8>) -> Result<Vec<u8>, fiona::Error> {
         assert!(!self.tls_stream().is_handshaking());
 
         async_read_impl(&mut self.s, tls_stream!(self), buf).await
     }
 
-    pub async fn async_write(
-        &mut self,
-        buf: Vec<u8>,
-    ) -> Result<Vec<u8>, fiona::Error> {
+    pub async fn async_write(&mut self, buf: Vec<u8>) -> Result<Vec<u8>, fiona::Error> {
         let tls = tls_stream!(self);
         async_write_impl(&mut self.s, tls, buf).await
     }
@@ -290,10 +262,7 @@ async fn send_full_tls<Data>(
 }
 
 #[allow(clippy::unnecessary_wraps)]
-fn read_plaintext<Data>(
-    tls: &mut rustls::ConnectionCommon<Data>,
-    mut buf: Vec<u8>,
-) -> Result<Vec<u8>, fiona::Error> {
+fn read_plaintext<Data>(tls: &mut rustls::ConnectionCommon<Data>, mut buf: Vec<u8>) -> Result<Vec<u8>, fiona::Error> {
     buf.clear();
     buf.resize(buf.capacity(), 0);
     let r = tls.reader().read(&mut buf)?;

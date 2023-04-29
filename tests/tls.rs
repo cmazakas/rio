@@ -8,13 +8,14 @@ extern crate webpki_roots;
 
 use std::{io::Read, sync::Arc};
 
-use fiona as fio;
+use fiona::{
+    self as fio,
+    ip::{self, tcp::async_resolve_dns},
+};
 
-const LOCALHOST: std::net::IpAddr =
-    std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST);
+const LOCALHOST: std::net::IpAddr = std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST);
 
-static mut PORT: std::sync::atomic::AtomicU16 =
-    std::sync::atomic::AtomicU16::new(4300);
+static mut PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(4300);
 
 fn get_port() -> u16 {
     unsafe { PORT.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
@@ -32,15 +33,13 @@ fn read_file(path: &str) -> Vec<u8> {
 
 fn make_root_cert_store() -> rustls::RootCertStore {
     let mut root_store = rustls::RootCertStore::empty();
-    root_store.add_server_trust_anchors(
-        webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|root_ca| {
-            rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
-                root_ca.subject,
-                root_ca.spki,
-                root_ca.name_constraints,
-            )
-        }),
-    );
+    root_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|root_ca| {
+        rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
+            root_ca.subject,
+            root_ca.spki,
+            root_ca.name_constraints,
+        )
+    }));
 
     let certs = read_file("tests/ca.crt");
     let mut certs = rustls_pemfile::certs(&mut &certs[..]).unwrap();
@@ -69,8 +68,7 @@ fn make_tls_server_cfg() -> rustls::ServerConfig {
     let certs = rustls_pemfile::certs(&mut &buf[..]).unwrap();
     assert_eq!(certs.len(), 1);
 
-    let cert_chain: Vec<rustls::Certificate> =
-        certs.into_iter().map(rustls::Certificate).collect();
+    let cert_chain: Vec<rustls::Certificate> = certs.into_iter().map(rustls::Certificate).collect();
 
     let buf = read_file("tests/server.key");
     let mut keys = rustls_pemfile::pkcs8_private_keys(&mut &buf[..]).unwrap();
@@ -91,11 +89,8 @@ fn tls_test() {
 
     let client_cfg = std::sync::Arc::new(make_tls_client_cfg());
 
-    let mut client = rustls::ClientConnection::new(
-        client_cfg,
-        rustls::ServerName::try_from("localhost").unwrap(),
-    )
-    .unwrap();
+    let mut client =
+        rustls::ClientConnection::new(client_cfg, rustls::ServerName::try_from("localhost").unwrap()).unwrap();
 
     // client
     //   .writer()
@@ -121,12 +116,7 @@ fn tls_test() {
     let mut server_buf = Vec::<u8>::new();
     server.read_tls(&mut &net_buf[..]).unwrap();
     server.process_new_packets().unwrap();
-    match server
-        .reader()
-        .read_to_end(&mut server_buf)
-        .unwrap_err()
-        .kind()
-    {
+    match server.reader().read_to_end(&mut server_buf).unwrap_err().kind() {
         std::io::ErrorKind::WouldBlock => {}
         _ => panic!(""),
     }
@@ -164,9 +154,7 @@ fn tls_test() {
     for _i in 0..5 {
         client
             .writer()
-            .write_all(
-                b"I bestow the heads of virgins and the first-born sons!",
-            )
+            .write_all(b"I bestow the heads of virgins and the first-born sons!")
             .unwrap();
 
         net_buf.clear();
@@ -255,10 +243,7 @@ fn tls_server_test() {
 
     let server_port = get_port();
 
-    fn server(
-        ex: &fio::Executor,
-        port: u16,
-    ) -> impl std::future::Future<Output = ()> {
+    fn server(ex: &fio::Executor, port: u16) -> impl std::future::Future<Output = ()> {
         let ex = ex.clone();
         let server_cfg = std::sync::Arc::new(make_tls_server_cfg());
 
@@ -269,8 +254,7 @@ fn tls_server_test() {
             let mut peer = acceptor.async_accept().await.unwrap();
             peer.timeout = std::time::Duration::from_secs(1);
 
-            let mut tls_stream =
-                rustls::ServerConnection::new(server_cfg).unwrap();
+            let mut tls_stream = rustls::ServerConnection::new(server_cfg).unwrap();
             assert!(tls_stream.is_handshaking());
 
             let mut buf = vec![0_u8; 1024 * 1024];
@@ -355,10 +339,7 @@ fn tls_server_test() {
         }
     }
 
-    fn client(
-        ex: &fio::Executor,
-        port: u16,
-    ) -> impl std::future::Future<Output = ()> {
+    fn client(ex: &fio::Executor, port: u16) -> impl std::future::Future<Output = ()> {
         let ex = ex.clone();
         let client_cfg = std::sync::Arc::new(make_tls_client_cfg());
 
@@ -372,11 +353,8 @@ fn tls_server_test() {
                 buf.set_len(0);
             }
 
-            let mut tls_stream = rustls::ClientConnection::new(
-                client_cfg,
-                rustls::ServerName::try_from("localhost").unwrap(),
-            )
-            .unwrap();
+            let mut tls_stream =
+                rustls::ClientConnection::new(client_cfg, rustls::ServerName::try_from("localhost").unwrap()).unwrap();
 
             tls_stream.write_tls(&mut buf).unwrap();
             let mut buf = client.async_write(buf).await.unwrap();
@@ -444,10 +422,7 @@ fn test_async_handshake() {
 
     let server_port = get_port();
 
-    fn server(
-        ex: &fio::Executor,
-        port: u16,
-    ) -> impl std::future::Future<Output = ()> {
+    fn server(ex: &fio::Executor, port: u16) -> impl std::future::Future<Output = ()> {
         let ex = ex.clone();
         let server_cfg = std::sync::Arc::new(make_tls_server_cfg());
 
@@ -466,8 +441,7 @@ fn test_async_handshake() {
             let p = buf.as_ptr();
             let c = buf.capacity();
 
-            let mut tls_server =
-                fio::ip::tcp::tls::Server::new(peer, server_cfg);
+            let mut tls_server = fio::ip::tcp::tls::Server::new(peer, server_cfg);
 
             tls_server.async_handshake().await.unwrap();
 
@@ -499,10 +473,7 @@ fn test_async_handshake() {
         }
     }
 
-    fn client(
-        ex: &fio::Executor,
-        port: u16,
-    ) -> impl std::future::Future<Output = ()> {
+    fn client(ex: &fio::Executor, port: u16) -> impl std::future::Future<Output = ()> {
         let ex = ex.clone();
         let client_cfg = std::sync::Arc::new(make_tls_client_cfg());
 
@@ -515,16 +486,12 @@ fn test_async_handshake() {
             let p = buf.as_ptr();
             let c = buf.capacity();
 
-            let mut tls_client =
-                fio::ip::tcp::tls::Client::new(&ex, client_cfg);
+            let mut tls_client = fio::ip::tcp::tls::Client::new(&ex, client_cfg);
 
             let server_name = "localhost";
             let ipv4_addr = LOCALHOST;
 
-            tls_client
-                .async_connect(server_name, ipv4_addr, port)
-                .await
-                .unwrap();
+            tls_client.async_connect(server_name, ipv4_addr, port).await.unwrap();
 
             assert_eq!(buf.as_ptr(), p);
             assert_eq!(buf.capacity(), c);
@@ -578,9 +545,7 @@ fn getaddrinfo_test() {
 
     let mut res = std::ptr::null_mut::<libc::addrinfo>();
 
-    let r = unsafe {
-        libc::getaddrinfo(node.as_ptr(), service.as_ptr(), &hints, &mut res)
-    };
+    let r = unsafe { libc::getaddrinfo(node.as_ptr(), service.as_ptr(), &hints, &mut res) };
 
     assert_eq!(r, 0);
 
@@ -591,8 +556,7 @@ fn getaddrinfo_test() {
         if addrinfo.ai_family == libc::AF_INET {
             println!("found an ipv4 address");
 
-            let mut addr_in =
-                unsafe { std::mem::zeroed::<libc::sockaddr_in>() };
+            let mut addr_in = unsafe { std::mem::zeroed::<libc::sockaddr_in>() };
 
             unsafe {
                 std::ptr::copy_nonoverlapping(
@@ -602,8 +566,7 @@ fn getaddrinfo_test() {
                 )
             };
 
-            let ipv4 =
-                std::net::Ipv4Addr::from(addr_in.sin_addr.s_addr.to_be());
+            let ipv4 = std::net::Ipv4Addr::from(addr_in.sin_addr.s_addr.to_be());
             let port = addr_in.sin_port.to_be();
             println!("ipv4 address is: {ipv4:?}:{port}");
 
@@ -614,25 +577,18 @@ fn getaddrinfo_test() {
                 let mut buf = vec![0_u8; 4 * 1024];
 
                 let client_cfg = std::sync::Arc::new(make_tls_client_cfg());
-                let mut client =
-                    fio::ip::tcp::tls::Client::new(&ex, client_cfg);
+                let mut client = fio::ip::tcp::tls::Client::new(&ex, client_cfg);
 
                 client.timeout(std::time::Duration::from_secs(2));
 
                 client
-                    .async_connect(
-                        hostname,
-                        std::net::IpAddr::V4(ipv4),
-                        port.to_le(),
-                    )
+                    .async_connect(hostname, std::net::IpAddr::V4(ipv4), port.to_le())
                     .await
                     .unwrap();
                 println!("successfully connected to the remote peer!");
 
                 buf.clear();
-                buf.extend_from_slice(
-                    b"GET / HTTP/1.1\r\nConnection: close\r\n\r\n",
-                );
+                buf.extend_from_slice(b"GET / HTTP/1.1\r\nConnection: close\r\n\r\n");
                 buf = client.async_write(buf).await.unwrap();
 
                 loop {
@@ -663,8 +619,7 @@ fn getaddrinfo_test() {
         if addrinfo.ai_family == libc::AF_INET6 {
             println!("found an ipv6 address");
 
-            let mut addr_in6 =
-                unsafe { std::mem::zeroed::<libc::sockaddr_in6>() };
+            let mut addr_in6 = unsafe { std::mem::zeroed::<libc::sockaddr_in6>() };
 
             unsafe {
                 std::ptr::copy_nonoverlapping(
@@ -674,8 +629,7 @@ fn getaddrinfo_test() {
                 )
             };
 
-            let ipv6_addr =
-                std::net::Ipv6Addr::from(addr_in6.sin6_addr.s6_addr);
+            let ipv6_addr = std::net::Ipv6Addr::from(addr_in6.sin6_addr.s6_addr);
             println!("ipv6 address is: {ipv6_addr:?}");
         }
         res = addrinfo.ai_next;

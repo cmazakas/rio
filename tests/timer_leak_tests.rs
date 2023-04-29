@@ -26,10 +26,7 @@ fn forget_future_initiated() {
         let waker = std::sync::Arc::new(NopWaker {}).into();
         let mut cx = std::task::Context::from_waker(&waker);
 
-        assert!(
-            unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }
-                .is_pending()
-        );
+        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }.is_pending());
         std::mem::forget(f);
 
         let mut timer = fiona::time::Timer::new(&ex);
@@ -51,8 +48,8 @@ fn forget_future_initiated() {
 #[ignore]
 fn forget_timer_initiated() {
     /**
-     * Test that forget() is harmless when the associated future is initiated and
-     * then forgotten.
+     * Test that forget() is harmless when the associated future is
+     * initiated and then forgotten.
      */
     struct NopWaker {}
     impl std::task::Wake for NopWaker {
@@ -72,10 +69,7 @@ fn forget_timer_initiated() {
         let waker = std::sync::Arc::new(NopWaker {}).into();
         let mut cx = std::task::Context::from_waker(&waker);
 
-        assert!(
-            unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }
-                .is_pending()
-        );
+        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f).poll(&mut cx) }.is_pending());
         std::mem::forget(f);
         std::mem::forget(timer);
 

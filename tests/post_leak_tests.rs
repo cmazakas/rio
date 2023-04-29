@@ -3,9 +3,11 @@
 #[should_panic]
 fn cross_io_contexts() {
     /***
-     * This test thankfully panics because the task_ctx for ex2 isn't set when ioc1.run() begins.
+     * This test thankfully panics because the task_ctx for ex2 isn't set when
+     * ioc1.run() begins.
      *
-     * In in the ideal case, we keep it this way so as to protect the user from themselves.
+     * In in the ideal case, we keep it this way so as to protect the user from
+     * themselves.
      *
      * TODO: find out why we leak 2 FDs from `io_uring_queue_init` here
      */

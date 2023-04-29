@@ -18,10 +18,7 @@ fn executor_post_ioc_running() {
                 timer.async_wait().await.unwrap();
                 timer.async_wait().await.unwrap();
 
-                assert!(
-                    std::time::Instant::now().duration_since(t).as_millis()
-                        >= 2 * 500
-                );
+                assert!(std::time::Instant::now().duration_since(t).as_millis() >= 2 * 500);
 
                 unsafe { WAS_RUN = true };
             }
@@ -62,10 +59,7 @@ fn executor_post_ioc_not_running() {
             timer.async_wait().await.unwrap();
             timer.async_wait().await.unwrap();
 
-            assert!(
-                std::time::Instant::now().duration_since(t).as_millis()
-                    >= 2 * 500
-            );
+            assert!(std::time::Instant::now().duration_since(t).as_millis() >= 2 * 500);
 
             unsafe { NUM_RUNS += 1 };
         }

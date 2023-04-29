@@ -27,10 +27,7 @@ pub fn main() {
             println!("Going to wait again...");
             match timer.async_wait().await {
                 Ok(_) => {
-                    println!(
-                        "waited succesfully, again, for {} seconds",
-                        idx + 1
-                    );
+                    println!("waited succesfully, again, for {} seconds", idx + 1);
                 }
                 Err(_) => {
                     println!("Timer read failed!");

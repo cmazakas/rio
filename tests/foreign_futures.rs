@@ -40,10 +40,7 @@ impl Drop for TimerFuture {
 impl std::future::Future for TimerFuture {
     type Output = i32;
 
-    fn poll(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Self::Output> {
+    fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
         match self.join_handle {
             None => {
                 let waker = cx.waker().clone();
@@ -119,22 +116,10 @@ fn foreign_multiple_timer_future() {
         let waker = fiona::WakerFuture {}.await;
         let mut cx = std::task::Context::from_waker(&waker);
 
-        assert!(
-            unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }
-                .is_pending()
-        );
-        assert!(
-            unsafe { std::pin::Pin::new_unchecked(&mut f2).poll(&mut cx) }
-                .is_pending()
-        );
-        assert!(
-            unsafe { std::pin::Pin::new_unchecked(&mut f3).poll(&mut cx) }
-                .is_pending()
-        );
-        assert!(
-            unsafe { std::pin::Pin::new_unchecked(&mut f4).poll(&mut cx) }
-                .is_pending()
-        );
+        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }.is_pending());
+        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f2).poll(&mut cx) }.is_pending());
+        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f3).poll(&mut cx) }.is_pending());
+        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f4).poll(&mut cx) }.is_pending());
 
         f4.await;
         f2.await;
@@ -161,22 +146,10 @@ fn foreign_multiple_timer_future() {
         let waker = fiona::WakerFuture {}.await;
         let mut cx = std::task::Context::from_waker(&waker);
 
-        assert!(
-            unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }
-                .is_pending()
-        );
-        assert!(
-            unsafe { std::pin::Pin::new_unchecked(&mut f2).poll(&mut cx) }
-                .is_pending()
-        );
-        assert!(
-            unsafe { std::pin::Pin::new_unchecked(&mut f3).poll(&mut cx) }
-                .is_pending()
-        );
-        assert!(
-            unsafe { std::pin::Pin::new_unchecked(&mut f4).poll(&mut cx) }
-                .is_pending()
-        );
+        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }.is_pending());
+        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f2).poll(&mut cx) }.is_pending());
+        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f3).poll(&mut cx) }.is_pending());
+        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f4).poll(&mut cx) }.is_pending());
 
         f1.await;
         f2.await;
@@ -259,10 +232,7 @@ fn drop() {
         let waker = fiona::WakerFuture {}.await;
         let mut cx = std::task::Context::from_waker(&waker);
 
-        assert!(
-            unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }
-                .is_pending()
-        );
+        assert!(unsafe { std::pin::Pin::new_unchecked(&mut f1).poll(&mut cx) }.is_pending());
 
         std::mem::drop(f1);
         unsafe { NUM_RUNS += 1 };

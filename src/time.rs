@@ -9,11 +9,7 @@ pub struct TimerFuture<'a> {
 }
 
 impl<'a> TimerFuture<'a> {
-    fn new(
-        ex: fiona::Executor,
-        fds: fiona::op::FdState,
-        m: std::marker::PhantomData<&'a mut Timer>,
-    ) -> Self {
+    fn new(ex: fiona::Executor, fds: fiona::op::FdState, m: std::marker::PhantomData<&'a mut Timer>) -> Self {
         Self { fds, ex, _m: m }
     }
 
@@ -31,11 +27,7 @@ impl<'a> Drop for TimerFuture<'a> {
             let ring = self.ex.get_ring();
             unsafe {
                 let sqe = fiona::liburing::io_uring_get_sqe(ring);
-                fiona::liburing::io_uring_prep_cancel(
-                    sqe,
-                    p.cast::<libc::c_void>(),
-                    0,
-                );
+                fiona::liburing::io_uring_prep_cancel(sqe, p.cast::<libc::c_void>(), 0);
                 fiona::liburing::io_uring_submit(ring);
             }
         }
@@ -45,10 +37,7 @@ impl<'a> Drop for TimerFuture<'a> {
 impl<'a> std::future::Future for TimerFuture<'a> {
     type Output = Result<(), i32>;
 
-    fn poll(
-        self: std::pin::Pin<&mut Self>,
-        _cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Self::Output> {
+    fn poll(self: std::pin::Pin<&mut Self>, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
         let p = self.fds.get();
         let fds = unsafe { &mut *p };
         if fds.initiated {
