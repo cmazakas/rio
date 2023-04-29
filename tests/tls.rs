@@ -685,3 +685,56 @@ fn getaddrinfo_test() {
         libc::freeaddrinfo(head);
     }
 }
+
+#[test]
+#[ignore]
+fn getaddrinfo_test2() {
+    let hostname = "www.google.com";
+
+    let mut ioc = fiona::IoContext::new();
+    let ex = ioc.get_executor();
+
+    ioc.post(async move {
+        let mut buf = vec![0_u8; 4 * 1024];
+
+        let client_cfg = std::sync::Arc::new(make_tls_client_cfg());
+
+        let ip_addrs = async_resolve_dns(hostname, "https").await.unwrap();
+        for (ip_addr, port) in &ip_addrs {
+            if let std::net::IpAddr::V4(_ipv4) = ip_addr {
+                let mut client = fio::ip::tcp::tls::Client::new(&ex, client_cfg.clone());
+                client.timeout(std::time::Duration::from_secs(2));
+                client.async_connect(hostname, *ip_addr, port.to_le()).await.unwrap();
+                println!("successfully connected to the remote peer!");
+
+                buf.clear();
+                buf.extend_from_slice(b"GET / HTTP/1.1\r\nConnection: close\r\n\r\n");
+                buf = client.async_write(buf).await.unwrap();
+
+                loop {
+                    buf.clear();
+                    match client.async_read(buf).await {
+                        Ok(b) => buf = b,
+                        Err(fiona::Error::Errno(fiona::Errno::ECANCELED)) => {
+                            buf = vec![0_u8; 4 * 1024];
+                            buf.clear();
+                            break;
+                        }
+                        Err(e) => panic!("{:?}", e),
+                    }
+
+                    let str = std::str::from_utf8(&buf).unwrap();
+                    println!("{str}");
+                    if buf.is_empty() {
+                        break;
+                    }
+                }
+
+                // client.async_shutdown(buf).await.unwrap();
+                // println!("successfully closed TLS connection");
+            }
+        }
+    });
+
+    ioc.run();
+}

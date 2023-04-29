@@ -24,6 +24,21 @@ pub struct Server {
     s: Socket,
 }
 
+// service => port number or service name
+// for list of valid service names, use `cat /etc/services`
+// valid examples include "http" and "https"
+#[must_use]
+pub fn async_resolve_dns(host: &str, service: &str) -> DNSFuture {
+    let node = Some(std::ffi::CString::new(host).unwrap());
+    let service = Some(std::ffi::CString::new(service).unwrap());
+
+    DNSFuture {
+        node,
+        service,
+        ..Default::default()
+    }
+}
+
 pub struct AcceptFuture<'a> {
     ex: fiona::Executor,
     fds: fiona::op::FdState,
@@ -49,6 +64,109 @@ pub struct WriteFuture<'a> {
     write_fds: fiona::op::FdState,
     timeout: std::time::Duration,
     _m: std::marker::PhantomData<&'a mut Socket>,
+}
+
+#[derive(Default)]
+pub struct DNSFuture {
+    handle: Option<std::thread::JoinHandle<Result<Vec<(std::net::IpAddr, u16)>, fiona::Errno>>>,
+    done: bool,
+    node: Option<std::ffi::CString>,
+    service: Option<std::ffi::CString>,
+}
+
+impl std::future::Future for DNSFuture {
+    type Output = Result<Vec<(std::net::IpAddr, u16)>, fiona::Errno>;
+    fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+        struct DropGuard {
+            head: *mut libc::addrinfo,
+        }
+        impl Drop for DropGuard {
+            fn drop(&mut self) {
+                unsafe {
+                    libc::freeaddrinfo(self.head);
+                }
+            }
+        }
+
+        match &self.handle {
+            Some(h) => {
+                if !h.is_finished() {
+                    return std::task::Poll::Pending;
+                }
+                let h = self.handle.take().unwrap();
+                let results = h.join().unwrap();
+                self.done = true;
+                std::task::Poll::Ready(results)
+            }
+            None => {
+                assert!(!self.done, "This future already completed");
+
+                let node = self.node.take().unwrap();
+                let service = self.service.take().unwrap();
+                let waker = cx.waker().clone();
+                self.handle = Some(std::thread::spawn(move || {
+                    let mut hints = unsafe { std::mem::zeroed::<libc::addrinfo>() };
+                    hints.ai_family = libc::AF_UNSPEC;
+                    hints.ai_socktype = libc::SOCK_STREAM;
+                    hints.ai_protocol = libc::IPPROTO_TCP;
+                    hints.ai_flags = 0;
+
+                    let mut res = std::ptr::null_mut::<libc::addrinfo>();
+
+                    let r = unsafe { libc::getaddrinfo(node.as_ptr(), service.as_ptr(), &hints, &mut res) };
+
+                    if r != 0 {
+                        return Err(unsafe { std::mem::transmute(r) });
+                    }
+
+                    let _guard = DropGuard { head: res };
+                    let mut v = Vec::new();
+
+                    while !res.is_null() {
+                        let addrinfo = unsafe { &mut *res };
+                        res = addrinfo.ai_next;
+                        if addrinfo.ai_family == libc::AF_INET {
+                            let mut addr_in = unsafe { std::mem::zeroed::<libc::sockaddr_in>() };
+                            unsafe {
+                                std::ptr::copy_nonoverlapping(
+                                    addrinfo.ai_addr.cast::<libc::sockaddr_in>(),
+                                    &mut addr_in,
+                                    1,
+                                );
+                            }
+
+                            let ipv4 = std::net::Ipv4Addr::from(addr_in.sin_addr.s_addr.to_be());
+
+                            let port = addr_in.sin_port.to_be();
+                            v.push((std::net::IpAddr::V4(ipv4), port));
+                        }
+
+                        if addrinfo.ai_family == libc::AF_INET6 {
+                            let mut addr_in6 = unsafe { std::mem::zeroed::<libc::sockaddr_in6>() };
+
+                            unsafe {
+                                std::ptr::copy_nonoverlapping(
+                                    addrinfo.ai_addr.cast::<libc::sockaddr_in6>(),
+                                    &mut addr_in6,
+                                    1,
+                                );
+                            }
+
+                            let ipv6 = std::net::Ipv6Addr::from(addr_in6.sin6_addr.s6_addr);
+
+                            let port = addr_in6.sin6_port.to_be();
+                            v.push((std::net::IpAddr::V6(ipv6), port));
+                        }
+                    }
+
+                    waker.wake();
+                    Ok(v)
+                }));
+
+                std::task::Poll::Pending
+            }
+        }
+    }
 }
 
 impl Acceptor {
