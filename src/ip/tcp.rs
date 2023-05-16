@@ -130,6 +130,7 @@ impl std::future::Future for DNSFuture {
                         if addrinfo.ai_family == libc::AF_INET {
                             let mut addr_in = unsafe { std::mem::zeroed::<libc::sockaddr_in>() };
                             unsafe {
+                                #[allow(clippy::cast_ptr_alignment)]
                                 std::ptr::copy_nonoverlapping(
                                     addrinfo.ai_addr.cast::<libc::sockaddr_in>(),
                                     &mut addr_in,
@@ -147,6 +148,7 @@ impl std::future::Future for DNSFuture {
                             let mut addr_in6 = unsafe { std::mem::zeroed::<libc::sockaddr_in6>() };
 
                             unsafe {
+                                #[allow(clippy::cast_ptr_alignment)]
                                 std::ptr::copy_nonoverlapping(
                                     addrinfo.ai_addr.cast::<libc::sockaddr_in6>(),
                                     &mut addr_in6,
@@ -213,7 +215,7 @@ impl Acceptor {
             self.fd,
             fiona::op::Op::Accept(fiona::op::AcceptState {
                 addr_in,
-                addr_len: std::mem::size_of::<libc::sockaddr_storage>() as u32,
+                addr_len: u32::try_from(std::mem::size_of::<libc::sockaddr_storage>()).unwrap(),
             }),
         );
 
@@ -293,10 +295,10 @@ impl Client {
 
         match ip_addr {
             std::net::IpAddr::V4(ipv4_addr) => {
-                addr_storage.ss_family = libc::AF_INET as u16;
+                addr_storage.ss_family = u16::try_from(libc::AF_INET).unwrap();
 
                 let ipv4_addr = libc::sockaddr_in {
-                    sin_family: libc::AF_INET as u16,
+                    sin_family: u16::try_from(libc::AF_INET).unwrap(),
                     sin_port: port.to_be(),
                     sin_addr: libc::in_addr {
                         s_addr: u32::from(ipv4_addr).to_be(),
@@ -502,7 +504,7 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
         let (addr, addrlen) = match connect_fds.op {
             fiona::op::Op::Connect(ref s) => (
                 std::ptr::addr_of!(s.addr_storage),
-                std::mem::size_of::<libc::sockaddr_in>() as u32,
+                u32::try_from(std::mem::size_of::<libc::sockaddr_in>()).unwrap(),
             ),
             _ => internal_error(""),
         };
@@ -555,7 +557,10 @@ impl<'a> std::future::Future for ReadFuture<'a> {
                 return std::task::Poll::Ready(Err(fiona::Error::Errno(err, buf)));
             }
 
-            unsafe { buf.set_len(buf.len() + read_fds.res as usize) };
+            unsafe {
+                #[allow(clippy::cast_sign_loss)]
+                buf.set_len(buf.len() + read_fds.res as usize);
+            }
             return std::task::Poll::Ready(Ok(buf));
         }
 
@@ -587,7 +592,7 @@ impl<'a> std::future::Future for ReadFuture<'a> {
                 read_sqe,
                 sockfd,
                 buf.cast::<libc::c_void>(),
-                nbytes as u32,
+                u32::try_from(nbytes).unwrap(),
                 offset as u64,
             );
         }
@@ -656,7 +661,13 @@ impl<'a> std::future::Future for WriteFuture<'a> {
         unsafe { fiona::liburing::io_uring_sqe_set_data(write_sqe, user_data) };
 
         unsafe {
-            fiona::liburing::io_uring_prep_write(write_sqe, sockfd, buf.cast::<libc::c_void>(), nbytes as u32, offset);
+            fiona::liburing::io_uring_prep_write(
+                write_sqe,
+                sockfd,
+                buf.cast::<libc::c_void>(),
+                u32::try_from(nbytes).unwrap(),
+                offset,
+            );
         }
 
         unsafe {

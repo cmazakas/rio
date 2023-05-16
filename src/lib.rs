@@ -3,13 +3,9 @@
     clippy::similar_names,
     clippy::missing_safety_doc,
     clippy::missing_panics_doc,
-    clippy::cast_ptr_alignment,
     clippy::module_name_repetitions,
     clippy::missing_errors_doc,
-    clippy::match_wildcard_for_single_variants,
-    clippy::cast_possible_truncation,
-    clippy::too_many_lines,
-    clippy::cast_sign_loss
+    clippy::too_many_lines
 )]
 #![allow(non_camel_case_types)]
 
