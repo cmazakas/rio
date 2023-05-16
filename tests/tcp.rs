@@ -236,7 +236,7 @@ fn read_timeout() {
 
         let r = client.async_read(buf).await.unwrap_err();
         match r {
-            fiona::Errno::ECANCELED => {}
+            fiona::Error::Errno(fiona::Errno::ECANCELED) => {}
             _ => panic!(""),
         };
 

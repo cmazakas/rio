@@ -66,16 +66,18 @@ pub struct WriteFuture<'a> {
     _m: std::marker::PhantomData<&'a mut Socket>,
 }
 
+type IpPortList = Vec<(std::net::IpAddr, u16)>;
+
 #[derive(Default)]
 pub struct DNSFuture {
-    handle: Option<std::thread::JoinHandle<Result<Vec<(std::net::IpAddr, u16)>, fiona::Errno>>>,
+    handle: Option<std::thread::JoinHandle<Result<IpPortList, fiona::Errno>>>,
     done: bool,
     node: Option<std::ffi::CString>,
     service: Option<std::ffi::CString>,
 }
 
 impl std::future::Future for DNSFuture {
-    type Output = Result<Vec<(std::net::IpAddr, u16)>, fiona::Errno>;
+    type Output = Result<IpPortList, fiona::Errno>;
     fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
         struct DropGuard {
             head: *mut libc::addrinfo,
@@ -536,7 +538,7 @@ impl<'a> std::future::Future for ConnectFuture<'a> {
 }
 
 impl<'a> std::future::Future for ReadFuture<'a> {
-    type Output = Result<Vec<u8>, fiona::Errno>;
+    type Output = Result<Vec<u8>, fiona::Error>;
 
     fn poll(self: std::pin::Pin<&mut Self>, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
         let p = self.read_fds.get();
@@ -544,7 +546,7 @@ impl<'a> std::future::Future for ReadFuture<'a> {
 
         if read_fds.done {
             if read_fds.res < 0 {
-                return std::task::Poll::Ready(Err(unsafe { std::mem::transmute(-read_fds.res) }));
+                return std::task::Poll::Ready(Err(fiona::Error::Errno(unsafe { std::mem::transmute(-read_fds.res) })));
             }
 
             let mut buf = match read_fds.op {
@@ -609,14 +611,14 @@ impl<'a> std::future::Future for ReadFuture<'a> {
 }
 
 impl<'a> std::future::Future for WriteFuture<'a> {
-    type Output = Result<Vec<u8>, fiona::Errno>;
+    type Output = Result<Vec<u8>, fiona::Error>;
     fn poll(self: std::pin::Pin<&mut Self>, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
         let p = self.write_fds.get();
         let fds = unsafe { &mut *p };
 
         if fds.done {
             if fds.res < 0 {
-                return std::task::Poll::Ready(Err(unsafe { std::mem::transmute(-fds.res) }));
+                return std::task::Poll::Ready(Err(fiona::Error::Errno(unsafe { std::mem::transmute(-fds.res) })));
             }
 
             let buf = match fds.op {
