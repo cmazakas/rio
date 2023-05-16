@@ -22,8 +22,8 @@ pub use rustls::Error as TLSError;
 #[derive(Debug)]
 pub enum Error {
     IO(std::io::Error),
-    Errno(Errno),
-    TLS(TLSError),
+    Errno(Errno, Vec<u8>),
+    TLS(TLSError, Vec<u8>),
 }
 
 pub mod ip;
@@ -364,12 +364,12 @@ impl From<std::io::Error> for Error {
 
 impl From<Errno> for Error {
     fn from(value: Errno) -> Self {
-        Self::Errno(value)
+        Self::Errno(value, Vec::new())
     }
 }
 
 impl From<TLSError> for Error {
     fn from(value: TLSError) -> Self {
-        Self::TLS(value)
+        Self::TLS(value, Vec::new())
     }
 }

@@ -65,7 +65,9 @@ impl Client {
                     buf.clear();
                     buf = s.async_read(buf).await?;
                     tls_stream.read_tls(&mut &buf[..])?;
-                    tls_stream.process_new_packets()?;
+                    if let Err(e) = tls_stream.process_new_packets() {
+                        return Err(fiona::Error::TLS(e, buf));
+                    }
                 }
             }
             buf = send_full_tls(s, tls_stream, buf).await?;
@@ -124,7 +126,10 @@ impl Client {
             }
 
             tls.read_tls(&mut &buf[..])?;
-            let info = tls.process_new_packets()?;
+            let info = match tls.process_new_packets() {
+                Err(e) => return Err(fiona::Error::TLS(e, buf)),
+                Ok(info) => info,
+            };
 
             if info.peer_has_closed() {
                 break;
@@ -169,7 +174,10 @@ impl Server {
                     assert!(!buf.is_empty());
 
                     tls_stream.read_tls(&mut &buf[..])?;
-                    let _info = tls_stream.process_new_packets()?;
+                    let _info = match tls_stream.process_new_packets() {
+                        Err(e) => return Err(fiona::Error::TLS(e, buf)),
+                        Ok(info) => info,
+                    };
                 }
 
                 if tls_stream.wants_write() {
@@ -279,7 +287,10 @@ async fn async_read_impl<Data>(
 ) -> Result<Vec<u8>, fiona::Error> {
     assert!(!tls.is_handshaking());
 
-    let mut info = tls.process_new_packets()?;
+    let mut info = match tls.process_new_packets() {
+        Err(e) => return Err(fiona::Error::TLS(e, buf)),
+        Ok(info) => info,
+    };
 
     let mut n = info.plaintext_bytes_to_read();
     if n > 0 {
@@ -296,7 +307,11 @@ async fn async_read_impl<Data>(
     buf.clear();
     buf = s.async_read(buf).await?;
     tls.read_tls(&mut &buf[..])?;
-    info = tls.process_new_packets()?;
+    info = match tls.process_new_packets() {
+        Err(e) => return Err(fiona::Error::TLS(e, buf)),
+        Ok(info) => info,
+    };
+
     if info.plaintext_bytes_to_read() == 0 {
         while info.plaintext_bytes_to_read() == 0 && !info.peer_has_closed() {
             buf.clear();
@@ -305,7 +320,10 @@ async fn async_read_impl<Data>(
                 return Ok(buf);
             }
             tls.read_tls(&mut &buf[..])?;
-            info = tls.process_new_packets()?;
+            info = match tls.process_new_packets() {
+                Err(e) => return Err(fiona::Error::TLS(e, buf)),
+                Ok(info) => info,
+            };
         }
     }
 

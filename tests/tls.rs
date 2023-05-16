@@ -595,7 +595,7 @@ fn getaddrinfo_test() {
                     buf.clear();
                     match client.async_read(buf).await {
                         Ok(b) => buf = b,
-                        Err(fiona::Error::Errno(fiona::Errno::ECANCELED)) => {
+                        Err(fiona::Error::Errno(fiona::Errno::ECANCELED, _)) => {
                             buf = vec![0_u8; 4 * 1024];
                             buf.clear();
                             break;
@@ -669,7 +669,7 @@ fn getaddrinfo_test2() {
                     buf.clear();
                     match client.async_read(buf).await {
                         Ok(b) => buf = b,
-                        Err(fiona::Error::Errno(fiona::Errno::ECANCELED)) => {
+                        Err(fiona::Error::Errno(fiona::Errno::ECANCELED, _)) => {
                             buf = vec![0_u8; 4 * 1024];
                             buf.clear();
                             break;

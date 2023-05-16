@@ -545,14 +545,15 @@ impl<'a> std::future::Future for ReadFuture<'a> {
         let read_fds = unsafe { &mut *p };
 
         if read_fds.done {
-            if read_fds.res < 0 {
-                return std::task::Poll::Ready(Err(fiona::Error::Errno(unsafe { std::mem::transmute(-read_fds.res) })));
-            }
-
             let mut buf = match read_fds.op {
                 fiona::op::Op::Read(ref mut s) => s.buf.take().unwrap(),
                 _ => internal_error("Read op was completed but the internal Op is an invalid type"),
             };
+
+            if read_fds.res < 0 {
+                let err = unsafe { std::mem::transmute(-read_fds.res) };
+                return std::task::Poll::Ready(Err(fiona::Error::Errno(err, buf)));
+            }
 
             unsafe { buf.set_len(buf.len() + read_fds.res as usize) };
             return std::task::Poll::Ready(Ok(buf));
@@ -617,14 +618,15 @@ impl<'a> std::future::Future for WriteFuture<'a> {
         let fds = unsafe { &mut *p };
 
         if fds.done {
-            if fds.res < 0 {
-                return std::task::Poll::Ready(Err(fiona::Error::Errno(unsafe { std::mem::transmute(-fds.res) })));
-            }
-
             let buf = match fds.op {
                 fiona::op::Op::Write(ref mut s) => s.buf.take().unwrap(),
                 _ => internal_error("Write op was completed but the internal Op is an invalid type"),
             };
+
+            if fds.res < 0 {
+                let err = unsafe { std::mem::transmute(-fds.res) };
+                return std::task::Poll::Ready(Err(fiona::Error::Errno(err, buf)));
+            }
 
             return std::task::Poll::Ready(Ok(buf));
         }
