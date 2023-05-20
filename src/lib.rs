@@ -1,4 +1,40 @@
-#![warn(clippy::pedantic)]
+//! Fiona is a fast I/O runtime built on top of [`io_uring`](https://en.wikipedia.org/wiki/Io_uring). Originally, Fiona
+//! began as a port of [Boost.Asio](https://www.boost.org/doc/libs/1_82_0/doc/html/boost_asio.html) so the APIs are
+//! somewhat similar.
+//!
+//! Fiona aims to leverage the advantages of `io_uring` hence it is not cross-platform and only works on Linux.
+//!
+//! Fiona will eventually _require_ kernel v6.1 and above though right now, 5.15 should still work.
+//!
+//! Fiona is purposefully a single-threaded I/O runtime. Users are encouraged to handle multithreading by using multiple
+//! TCP listeners, each on their own thread. This avoids the jittery latency introduced by synchronization primitives
+//! and aligns with the liburing author's intention for the library. There are plans for a better multithreaded
+//! solution.
+//!
+//! This library depends on liburing v2.4. The crate's build.rs does not attempt to download and build liburing for the
+//! user. If the user does not already have an installation of liburing, it can be built easily by doing:
+//!
+//! ```bash
+//! mkdir ~/__install__ \
+//! && git clone https://github.com/axboe/liburing.git \
+//! && cd liburing \
+//! && ./configure --prefix=~/__install__
+//! && make -j 4 \
+//! && make install
+//! ```
+//!
+//! Then in the consuming projects, one can add to their `.cargo/config.toml`:
+//!
+//! ```toml
+//! [env]
+//! RIO_LIBURING_INCLUDE_DIR = "/home/exbigboss/cpp/__install__/include"
+//! RIO_LIBURING_LIBRARY_DIR = "/home/exbigboss/cpp/__install__/lib"
+//! ```
+//!
+//! These environment variables must be set for the build to succeed.
+//!
+
+#![warn(clippy::pedantic, missing_docs)]
 #![allow(
     clippy::similar_names,
     clippy::missing_safety_doc,
@@ -15,17 +51,28 @@ extern crate nix;
 pub use nix::errno::Errno;
 pub use rustls::Error as TLSError;
 
+/// The main error type used by the library and directly exposed to the user.
 #[derive(Debug)]
 pub enum Error {
+    /// Support the most ubiquitous Error type
     IO(std::io::Error),
+    /// A pair of [`Errno`] and [`Vec<u8>`]. Used to transfer the caller's buffer back to them when an async operation
+    /// completes with an error. This error occurs when underlying `io_uring` events themselves do not complete
+    /// successfully.
     Errno(Errno, Vec<u8>),
+    /// A pair of [`Errno`] and [`Vec<u8>`]. Used to tansfer the caller's buffer back to them when an async operation
+    /// completes with an error. This error occurs during various TLS operations.
     TLS(TLSError, Vec<u8>),
 }
 
+/// Contains functions and classes associated with the internet protocol.
 pub mod ip;
+/// Contains simple helpers for working with various C APIs
 pub mod libc;
+/// An FFI wrapper for [liburing](https://github.com/axboe/liburing).
 pub mod liburing;
-pub mod op;
+mod op;
+/// Contains functions and classes that support timers and timeouts.
 pub mod time;
 // pub mod probe;
 
@@ -75,6 +122,16 @@ impl std::task::Wake for PipeWaker {
     }
 }
 
+/// A helper type designed to get the Waker associated with the Context supplied to an `async` block.
+///
+/// Example:
+/// ```rust
+/// let mut ioc = fiona::IoContext::new();
+/// ioc.post(async {
+///   let _waker = fiona::WakerFuture {}.await;
+/// });
+/// ioc.run();
+/// ```
 pub struct WakerFuture {}
 
 impl std::future::Future for WakerFuture {
@@ -91,10 +148,17 @@ struct IoContextState {
     tasks: std::collections::VecDeque<std::pin::Pin<Box<Task>>>,
 }
 
+/// The Fiona runtime.
+///
+/// Can be used to acquire an [`Executor`] which enables the creation of
+/// I/O objects and enables the creation of work for the `IoContext` to run.
 pub struct IoContext {
     p: std::rc::Rc<std::cell::UnsafeCell<IoContextState>>,
 }
 
+/// A lightweight handle to an [`IoContext`].
+///
+/// Can be used to create I/O objects and also schedule work on the associated `IoContext`.
 #[derive(Clone)]
 pub struct Executor {
     p: std::rc::Rc<std::cell::UnsafeCell<IoContextState>>,
@@ -113,6 +177,7 @@ impl Drop for IoContextState {
 }
 
 impl IoContext {
+    /// Creates a default `IoContext`.
     #[must_use]
     pub fn new() -> Self {
         let ring = liburing::setup(32, 0);
@@ -130,6 +195,8 @@ impl IoContext {
         (*std::rc::Rc::as_ptr(&self.p)).get()
     }
 
+    /// Submit a task `F` to the `IoContext` for completion. This function is non-blocking. Note, the supplied task will
+    /// automatically be moved into a heap allocation so there's no need for `F` to be boxed.
     pub fn post<F>(&mut self, task: F)
     where
         F: std::future::Future<Output = ()> + 'static,
@@ -138,11 +205,13 @@ impl IoContext {
         ex.post(task);
     }
 
+    /// Obtain a copy of the `Executor` associated with this `IoContext`.
     #[must_use]
     pub fn get_executor(&self) -> Executor {
         Executor { p: self.p.clone() }
     }
 
+    /// Begin the main I/O processing loop. `run` blocks until all tasks are completed. Can be called multiple times.
     #[allow(clippy::too_many_lines)]
     pub fn run(&mut self) {
         pub struct CQESeenGuard {
@@ -323,11 +392,14 @@ impl Executor {
         unsafe { (*std::rc::Rc::as_ptr(&self.p)).get() }
     }
 
+    /// Obtain a raw pointer to the underlying `io_uring` structure used by liburing.
     #[must_use]
     pub fn get_ring(&self) -> *mut liburing::io_uring {
         unsafe { (*self.get_state()).ring }
     }
 
+    /// Post work to the `IoContext` associated with the current `Executor`. This function is non-blocking. Note, the
+    /// supplied task will automatically be moved into a heap allocation so there's no need for `F` to be boxed.
     pub fn post<F>(&mut self, task: F)
     where
         F: std::future::Future<Output = ()> + 'static,
