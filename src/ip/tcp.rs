@@ -3,32 +3,111 @@ extern crate nix;
 
 use crate as fiona;
 
+/// The `tls` module provides a TLS socket type on top of the normal TCP/IP socket.
 pub mod tls;
 
+/// A TCP/IP struct that enables asynchronous [accept(2)](https://www.man7.org/linux/man-pages/man2/accept.2.html)
+/// calls.
+///
 pub struct Acceptor {
     fd: i32,
     ex: fiona::Executor,
 }
 
+impl Acceptor {
+    /// Create a new `Acceptor` using the provided `Executor`.
+    ///
+    /// Upon creation, the underlying TCP socket is not bound to any address or port. [`listen`] must be called before
+    /// any calls to [`async_accept`].
+    ///
+    /// [`listen`]: Acceptor::listen
+    /// [`async_accept`]: Acceptor::async_accept
+    #[must_use]
+    pub fn new(ex: &fiona::Executor) -> Self {
+        Self { fd: -1, ex: ex.clone() }
+    }
+
+    ///
+    pub fn listen(&mut self, ip_addr: std::net::IpAddr, port: u16) -> Result<(), fiona::Errno> {
+        match ip_addr {
+            std::net::IpAddr::V4(ipv4_addr) => {
+                match fiona::liburing::make_ipv4_tcp_server_socket(u32::from(ipv4_addr), port) {
+                    Ok(fd) => {
+                        self.fd = fd;
+                        Ok(())
+                    }
+                    Err(e) => Err(unsafe { std::mem::transmute(e) }),
+                }
+            }
+            std::net::IpAddr::V6(_ipv6_addr) => {
+                unimplemented!();
+                // let addr = libc::in6_addr {
+                //     s6_addr: ipv6_addr.octets(),
+                // };
+
+                // match fiona::liburing::make_ipv6_tcp_server_socket(addr,
+                // port) {     Ok(fd) => {
+                //         self.fd = fd;
+                //         Ok(())
+                //     }
+                //     Err(e) => Err(unsafe { std::mem::transmute(e) }),
+                // }
+            }
+        }
+    }
+
+    pub fn async_accept(&mut self) -> AcceptFuture {
+        assert!(self.fd > 0);
+        let addr_in: libc::sockaddr_storage = unsafe { std::mem::zeroed() };
+
+        let fds = fiona::op::FdState::new(
+            self.fd,
+            fiona::op::Op::Accept(fiona::op::AcceptState {
+                addr_in,
+                addr_len: u32::try_from(std::mem::size_of::<libc::sockaddr_storage>()).unwrap(),
+            }),
+        );
+
+        AcceptFuture {
+            ex: self.ex.clone(),
+            fds,
+            _m: std::marker::PhantomData,
+        }
+    }
+}
+
+impl Drop for Acceptor {
+    fn drop(&mut self) {
+        if self.fd >= 0 {
+            unsafe { libc::close(self.fd) };
+        }
+    }
+}
+
+/// A direction-less TCP socket suited only for asynchronous reads and writes
 pub struct Socket {
     fd: i32,
     ex: fiona::Executor,
+    /// The timeout to use during read and write operations.
     pub timeout: std::time::Duration,
 }
 
+/// A client-directed TCP socket.
 pub struct Client {
     s: Socket,
 }
 
+/// A server-directed TCP socket.
 pub struct Server {
     s: Socket,
 }
 
-// service => port number or service name
-// for list of valid service names, use `cat /etc/services`
-// valid examples include "http" and "https"
+/// Resolve the set of IP addresses for a given `host` and `service`.
 #[must_use]
 pub fn async_resolve_dns(host: &str, service: &str) -> DNSFuture {
+    // service => port number or service name
+    // for list of valid service names, use `cat /etc/services`
+    // valid examples include "http" and "https"
     let node = Some(std::ffi::CString::new(host).unwrap());
     let service = Some(std::ffi::CString::new(service).unwrap());
 
@@ -169,60 +248,6 @@ impl std::future::Future for DNSFuture {
 
                 std::task::Poll::Pending
             }
-        }
-    }
-}
-
-impl Acceptor {
-    #[must_use]
-    pub fn new(ex: &fiona::Executor) -> Self {
-        Self { fd: -1, ex: ex.clone() }
-    }
-
-    pub fn listen(&mut self, ip_addr: std::net::IpAddr, port: u16) -> Result<(), fiona::Errno> {
-        match ip_addr {
-            std::net::IpAddr::V4(ipv4_addr) => {
-                match fiona::liburing::make_ipv4_tcp_server_socket(u32::from(ipv4_addr), port) {
-                    Ok(fd) => {
-                        self.fd = fd;
-                        Ok(())
-                    }
-                    Err(e) => Err(unsafe { std::mem::transmute(e) }),
-                }
-            }
-            std::net::IpAddr::V6(_ipv6_addr) => {
-                unimplemented!();
-                // let addr = libc::in6_addr {
-                //     s6_addr: ipv6_addr.octets(),
-                // };
-
-                // match fiona::liburing::make_ipv6_tcp_server_socket(addr,
-                // port) {     Ok(fd) => {
-                //         self.fd = fd;
-                //         Ok(())
-                //     }
-                //     Err(e) => Err(unsafe { std::mem::transmute(e) }),
-                // }
-            }
-        }
-    }
-
-    pub fn async_accept(&mut self) -> AcceptFuture {
-        assert!(self.fd > 0);
-        let addr_in: libc::sockaddr_storage = unsafe { std::mem::zeroed() };
-
-        let fds = fiona::op::FdState::new(
-            self.fd,
-            fiona::op::Op::Accept(fiona::op::AcceptState {
-                addr_in,
-                addr_len: u32::try_from(std::mem::size_of::<libc::sockaddr_storage>()).unwrap(),
-            }),
-        );
-
-        AcceptFuture {
-            ex: self.ex.clone(),
-            fds,
-            _m: std::marker::PhantomData,
         }
     }
 }
@@ -684,14 +709,6 @@ impl<'a> std::future::Future for WriteFuture<'a> {
         unsafe { fiona::liburing::io_uring_submit(ring) };
         fds.initiated = true;
         std::task::Poll::Pending
-    }
-}
-
-impl Drop for Acceptor {
-    fn drop(&mut self) {
-        if self.fd >= 0 {
-            unsafe { libc::close(self.fd) };
-        }
     }
 }
 

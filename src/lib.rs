@@ -11,6 +11,10 @@
 //! and aligns with the liburing author's intention for the library. There are plans for a better multithreaded
 //! solution.
 //!
+//! The library's main APIs for abstracting read(2) and write(2) are ownership-based. This is done for soundness
+//! reasons. A user relinquishes ownership over a `Vec<u8>` to the `io_uring` runtime which is then restored upon
+//! completion of the async operation, even in the case of errors.
+//!
 //! This library depends on liburing v2.4. The crate's build.rs does not attempt to download and build liburing for the
 //! user. If the user does not already have an installation of liburing, it can be built easily by doing:
 //!
@@ -32,7 +36,6 @@
 //! ```
 //!
 //! These environment variables must be set for the build to succeed.
-//!
 
 #![warn(clippy::pedantic, missing_docs)]
 #![allow(
