@@ -41,7 +41,7 @@ fn make_root_cert_store() -> rustls::RootCertStore {
         )
     }));
 
-    let certs = read_file("tests/ca.crt");
+    let certs = read_file("tests/ca/ca.crt");
     let mut certs = rustls_pemfile::certs(&mut &certs[..]).unwrap();
     assert_eq!(certs.len(), 1);
 
@@ -63,14 +63,14 @@ fn make_tls_client_cfg() -> rustls::ClientConfig {
 }
 
 fn make_tls_server_cfg() -> rustls::ServerConfig {
-    let buf = read_file("tests/server.crt");
+    let buf = read_file("tests/ca/server.crt");
 
     let certs = rustls_pemfile::certs(&mut &buf[..]).unwrap();
     assert_eq!(certs.len(), 1);
 
     let cert_chain: Vec<rustls::Certificate> = certs.into_iter().map(rustls::Certificate).collect();
 
-    let buf = read_file("tests/server.key");
+    let buf = read_file("tests/ca/server.key");
     let mut keys = rustls_pemfile::pkcs8_private_keys(&mut &buf[..]).unwrap();
     assert_eq!(keys.len(), 1);
 
